@@ -8,10 +8,14 @@
     <!-- PWA設定 -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1e293b">
+    
+    <!-- iOS用設定 -->
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Lure Hangar">
+    <!-- 【修正】ここを修正しました -->
+    <meta name="apple-mobile-web-app-title" content="BLNCR LURE HANGAR">
+    
     <link rel="apple-touch-icon" href="icon-512.png">
     <link rel="icon" type="image/png" href="favicon.png">
     
@@ -186,7 +190,6 @@
             }
             setBoxSort(k, bid) { this.boxSortKey = k; this.renderBoxDetail(document.getElementById('main-content'), bid); }
             
-            // --- Analysis & Notes & Settings: No changes required ---
             renderAnalysis(c) {
                 document.getElementById('header-actions').innerHTML = ''; const tags = this.db.getAllTags();
                 c.innerHTML = `<div class="bg-white p-4 rounded-lg shadow mb-4"><div class="mb-4 text-sm"><label class="block text-xs text-gray-500 mb-1">タグで絞り込み</label><select id="chart-filter" class="w-full bg-blue-50 border border-blue-200 rounded p-2 text-blue-900 font-bold" onchange="ui.updateChart()"><option value="all">すべてのルアーを表示</option>${tags.map(t => `<option value="${t}" ${this.analysisFilterTag === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div><div class="flex gap-2 mb-4 text-sm"><div class="flex-1"><label class="block text-xs text-gray-500 mb-1">X軸</label><select id="chart-x" class="w-full bg-gray-50 border rounded p-1" onchange="ui.updateChart()"><option value="length" selected>長さ (mm)</option><option value="weight">重さ (g)</option><option value="depth">潜行深度 (m)</option><option value="sinkRate">沈降速度 (m/s)</option></select></div><div class="flex-1"><label class="block text-xs text-gray-500 mb-1">Y軸</label><select id="chart-y" class="w-full bg-gray-50 border rounded p-1" onchange="ui.updateChart()"><option value="length">長さ (mm)</option><option value="weight" selected>重さ (g)</option><option value="depth">潜行深度 (m)</option><option value="sinkRate">沈降速度 (m/s)</option></select></div></div><div class="relative w-full h-64"><canvas id="lureChart"></canvas></div></div><div id="chart-detail" class="hidden bg-white border border-blue-200 p-3 rounded shadow animate-pulse"></div>`;
