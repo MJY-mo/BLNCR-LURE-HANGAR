@@ -129,7 +129,7 @@
         }
 
         class UIManager {
-            constructor(db) { this.db = db; this.chartInstance = null; this.boxSortKey = 'default'; this.analysisFilterTag = 'all'; this.applyTheme(); }
+            constructor(db) { this.db = db; this.chartInstance = null; this.typeChartInstance = null; this.boxSortKey = 'default'; this.analysisFilterTag = 'all'; this.applyTheme(); }
             applyTheme() {
                 const s = this.db.data.settings; const r = document.documentElement; r.style.setProperty('--app-bg-color', s.bgColor);
                 let scale = '100%'; if (s.fontSize === 'small') scale = '85%'; if (s.fontSize === 'large') scale = '115%';
@@ -204,15 +204,33 @@
             
             renderAnalysis(c) {
                 document.getElementById('header-actions').innerHTML = ''; const tags = this.db.getAllTags();
-                c.innerHTML = `<div class="bg-white p-4 rounded-lg shadow mb-4"><div class="mb-4 text-sm"><label class="block text-xs text-gray-500 mb-1">タグで絞り込み</label><select id="chart-filter" class="w-full bg-blue-50 border border-blue-200 rounded p-2 text-blue-900 font-bold" onchange="ui.updateChart()"><option value="all">すべてのルアーを表示</option>${tags.map(t => `<option value="${t}" ${this.analysisFilterTag === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div><div class="flex gap-2 mb-4 text-sm"><div class="flex-1"><label class="block text-xs text-gray-500 mb-1">X軸</label><select id="chart-x" class="w-full bg-gray-50 border rounded p-1" onchange="ui.updateChart()"><option value="length" selected>長さ (mm)</option><option value="weight">重さ (g)</option><option value="depth">潜行深度 (m)</option><option value="sinkRate">沈降速度 (m/s)</option></select></div><div class="flex-1"><label class="block text-xs text-gray-500 mb-1">Y軸</label><select id="chart-y" class="w-full bg-gray-50 border rounded p-1" onchange="ui.updateChart()"><option value="length">長さ (mm)</option><option value="weight" selected>重さ (g)</option><option value="depth">潜行深度 (m)</option><option value="sinkRate">沈降速度 (m/s)</option></select></div></div><div class="relative w-full h-64"><canvas id="lureChart"></canvas></div></div><div id="chart-detail" class="hidden bg-white border border-blue-200 p-3 rounded shadow animate-pulse"></div>`;
+                c.innerHTML = `
+                    <div class="space-y-4 pb-20">
+                        <div class="bg-white p-4 rounded-lg shadow">
+                            <h3 class="font-bold text-gray-700 mb-3 text-sm"><i class="fa-solid fa-chart-line mr-2"></i>スペック分布</h3>
+                            <div class="mb-4 text-sm"><label class="block text-xs text-gray-500 mb-1">タグで絞り込み</label><select id="chart-filter" class="w-full bg-blue-50 border border-blue-200 rounded p-2 text-blue-900 font-bold" onchange="ui.updateChart()"><option value="all">すべてのルアーを表示</option>${tags.map(t => `<option value="${t}" ${this.analysisFilterTag === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+                            <div class="flex gap-2 mb-4 text-sm"><div class="flex-1"><label class="block text-xs text-gray-500 mb-1">X軸</label><select id="chart-x" class="w-full bg-gray-50 border rounded p-1" onchange="ui.updateChart()"><option value="length" selected>長さ (mm)</option><option value="weight">重さ (g)</option><option value="depth">潜行深度 (m)</option><option value="sinkRate">沈降速度 (m/s)</option></select></div><div class="flex-1"><label class="block text-xs text-gray-500 mb-1">Y軸</label><select id="chart-y" class="w-full bg-gray-50 border rounded p-1" onchange="ui.updateChart()"><option value="length">長さ (mm)</option><option value="weight" selected>重さ (g)</option><option value="depth">潜行深度 (m)</option><option value="sinkRate">沈降速度 (m/s)</option></select></div></div>
+                            <div class="relative w-full h-64"><canvas id="lureChart"></canvas></div>
+                        </div>
+                        <div id="chart-detail" class="hidden bg-white border border-blue-200 p-3 rounded shadow animate-pulse"></div>
+
+                        <div class="bg-white p-4 rounded-lg shadow">
+                            <h3 class="font-bold text-gray-700 mb-3 text-sm"><i class="fa-solid fa-chart-simple mr-2"></i>ルアー種類別構成比</h3>
+                            <div class="relative w-full h-64"><canvas id="lureTypeChart"></canvas></div>
+                        </div>
+                    </div>`;
                 setTimeout(() => this.updateChart(), 100);
             }
             updateChart() {
                 this.analysisFilterTag = document.getElementById('chart-filter').value;
                 const xk = document.getElementById('chart-x').value, yk = document.getElementById('chart-y').value;
                 const ctx = document.getElementById('lureChart').getContext('2d');
+                const ctxType = document.getElementById('lureTypeChart').getContext('2d');
+                
                 let ls = this.db.getAllLures();
                 if (this.analysisFilterTag !== 'all') { const ids = this.db.data.boxes.filter(b => (b.tags || []).includes(this.analysisFilterTag)).map(b => b.id); ls = ls.filter(l => ids.includes(l.boxId)); }
+                
+                // --- 散布図データ作成 ---
                 const datasets = [], types = [...new Set(ls.map(l => l.sinkType || 'Unknown'))];
                 const colors = { 'F (フローティング)': '#3b82f6', 'S (シンキング)': '#ef4444', 'SP (サスペンド)': '#eab308', 'HS (ヘビーシンキング)': '#9333ea', 'Unknown': '#9ca3af' };
                 types.forEach(t => {
@@ -223,6 +241,37 @@
                 });
                 if (this.chartInstance) this.chartInstance.destroy();
                 this.chartInstance = new Chart(ctx, { type: 'scatter', data: { datasets }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { title: { display: true, text: xk } }, y: { title: { display: true, text: yk } } }, onClick: (e, el) => { if (el.length > 0) { const l = this.chartInstance.data.datasets[el[0].datasetIndex].data[el[0].index].lure; const d = document.getElementById('chart-detail'); d.classList.remove('hidden'); d.innerHTML = `<div class="font-bold text-blue-800">${l.name}</div><div class="text-xs text-gray-600 mb-1">${l.maker} / ${l.color}</div><div class="text-xs font-mono bg-gray-100 p-1 inline-block rounded">L:${l.length}mm / W:${l.weight}g</div>${l.status && l.status !== '所持' ? `<div class="mt-1 text-xs text-red-500 font-bold">${l.status}</div>` : ''}`; } } } });
+
+                // --- 棒グラフデータ作成 ---
+                const masterTypes = this.db.data.master.types;
+                const dataTypes = [...new Set(ls.map(l => l.type || '未設定'))];
+                // マスタ順を優先しつつ、データにしかないものも追加
+                const allTypes = [...new Set([...masterTypes, ...dataTypes])].filter(t => dataTypes.includes(t));
+                const allSinkTypes = Object.keys(colors);
+
+                const barDatasets = allSinkTypes.map(st => {
+                    return {
+                        label: st.split(' ')[0], // F, S, SP等に短縮
+                        data: allTypes.map(type => {
+                            return ls
+                                .filter(l => (l.type || '未設定') === type && (l.sinkType || 'Unknown') === st)
+                                .reduce((sum, l) => sum + (Number(l.count) || 1), 0);
+                        }),
+                        backgroundColor: colors[st],
+                    };
+                });
+
+                if (this.typeChartInstance) this.typeChartInstance.destroy();
+                this.typeChartInstance = new Chart(ctxType, {
+                    type: 'bar',
+                    data: { labels: allTypes, datasets: barDatasets },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, title: { display: true, text: '個数' } } },
+                        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } }
+                    }
+                });
             }
             renderNotes(c) {
                 document.getElementById('header-actions').innerHTML = '';
