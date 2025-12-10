@@ -141,11 +141,24 @@
                 if (boxes.length === 0) { c.innerHTML = '<div class="flex flex-col items-center justify-center h-64 text-gray-400"><i class="fa-solid fa-box-open text-6xl mb-4"></i><p>ボックスが登録されていません</p></div>'; return; }
                 const grid = document.createElement('div'); grid.className = 'grid grid-cols-2 gap-4 pb-20';
                 boxes.forEach(b => {
-                    const cnt = this.db.getLuresByBoxId(b.id).length;
+                    const lures = this.db.getLuresByBoxId(b.id);
+                    const typeCount = lures.length;
+                    const totalCount = lures.reduce((sum, l) => sum + (Number(l.count) || 0), 0);
+                    
                     const el = document.createElement('div');
                     el.className = 'bg-white rounded-lg shadow overflow-hidden relative group cursor-pointer active:scale-95 transition-transform duration-100';
                     el.onclick = () => router.navigate('boxDetail', b.id);
-                    el.innerHTML = `<div class="aspect-square bg-gray-200 relative">${b.image ? `<img src="${b.image}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-gray-400"><i class="fa-solid fa-image text-3xl"></i></div>`}<div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2 pt-6"><div class="text-white text-xs font-bold truncate">${b.note || 'No Title'}</div><div class="flex gap-1 mt-1 flex-wrap h-5 overflow-hidden">${(b.tags || []).slice(0, 3).map(t => `<span class="bg-blue-500/80 text-[8px] text-white px-1 rounded">${t}</span>`).join('')}</div></div><div class="absolute top-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full">${cnt}個</div></div>`;
+                    el.innerHTML = `
+                        <div class="aspect-square bg-gray-200 relative">
+                            ${b.image ? `<img src="${b.image}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-gray-400"><i class="fa-solid fa-image text-3xl"></i></div>`}
+                            <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2 pt-6">
+                                ${b.note ? `<div class="text-white text-xs font-bold truncate mb-1">${b.note}</div>` : ''}
+                                <div class="flex gap-1 flex-wrap h-5 overflow-hidden">
+                                    ${(b.tags || []).slice(0, 3).map(t => `<span class="bg-blue-500/80 text-[8px] text-white px-2 py-0.5 rounded inline-flex items-center justify-center">${t}</span>`).join('')}
+                                </div>
+                            </div>
+                            <div class="absolute top-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full shadow-sm">${totalCount}個/${typeCount}種類</div>
+                        </div>`;
                     grid.appendChild(el);
                 });
                 c.appendChild(grid);
