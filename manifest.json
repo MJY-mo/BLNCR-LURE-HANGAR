@@ -1,6 +1,6 @@
 {
   "name": "BLNCR LURE HANGAR",
-  "short_name": "Lure Hangar",
+  "short_name": "BLNCR LURE HANGAR",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#333333",
