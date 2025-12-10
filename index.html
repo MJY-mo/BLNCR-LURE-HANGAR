@@ -213,7 +213,62 @@
             }
             renderNotes(c) {
                 document.getElementById('header-actions').innerHTML = '';
-                c.innerHTML = `<div class="space-y-6 pb-20"><section class="bg-white p-4 rounded shadow"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2 flex items-center"><i class="fa-solid fa-book-open mr-2 text-blue-500"></i>アプリの使い方</h3><div class="text-sm text-gray-600 space-y-4"><div><span class="font-bold text-blue-800 block mb-1">1. ボックスを登録する</span><p>「ボックス」タブ右上の<span class="bg-blue-500 text-white text-[10px] px-1 rounded">＋</span>ボタンから、手持ちのルアーケースごとの写真を登録します。</p></div><div><span class="font-bold text-blue-800 block mb-1">2. ルアーを詳細登録する</span><p>登録したボックス詳細画面で「個別登録」を行います。一覧からルアーをタップして「編集」や「スペックをコピーして新規」が可能です。</p></div><div><span class="font-bold text-blue-800 block mb-1">3. 戦力を分析する</span><p>「分析」タブでルアーの分布図を確認できます。手持ちルアーの偏りや、足りないレンジが一目でわかります。</p></div><div><span class="font-bold text-blue-800 block mb-1">4. マスタデータの編集</span><p>「設定」タブで、メーカー名や選択肢をカスタマイズできます。</p></div><div class="bg-red-50 p-2 rounded border border-red-200"><span class="font-bold text-red-600 block mb-1"><i class="fa-solid fa-circle-exclamation mr-1"></i>5. データのバックアップ（重要）</span><p class="text-red-600 font-bold text-xs mb-2">ブラウザのキャッシュ削除でデータが消えます。こまめに「書き出し」を行ってください。</p></div></div></section><section class="bg-red-50 p-4 rounded shadow border border-red-100"><h3 class="font-bold text-red-700 mb-3 border-b border-red-200 pb-2 flex items-center"><i class="fa-solid fa-triangle-exclamation mr-2"></i>釣りの注意点</h3><ul class="text-sm text-gray-700 space-y-2 list-disc list-inside"><li><span class="font-bold">安全第一：</span>ライフジャケット着用。足場の悪い場所ではスパイクシューズ等を装備。複数人での釣行を推奨します。</li><li><span class="font-bold">天候確認：</span>風速、波、潮位を事前確認。新しいフィールドや雨天時は特に注意。</li><li><span class="font-bold">マナーを守る：</span>ゴミ持ち帰り。釣り禁止エリア厳守。根掛かりライン等は生物に害を与えます。</li><li><span class="font-bold">フック事故：</span>帽子・偏光グラス着用推奨。釣り公園等では周囲へ十分注意しましょう。</li></ul></section><section class="bg-teal-50 p-4 rounded shadow border border-teal-100"><h3 class="font-bold text-teal-700 mb-3 border-b border-teal-200 pb-2 flex items-center"><i class="fa-solid fa-hand-holding-heart mr-2"></i>魚と自然への配慮</h3><div class="text-sm text-gray-700 space-y-4"><div><h4 class="font-bold text-teal-800 mb-1">🐟 希少な魚を守るために</h4><ul class="list-disc list-inside space-y-1 pl-1"><li>キープ数の制限、リリースの徹底。</li><li>バーブレスフック使用、魚体へのダメージ軽減。</li></ul></div><div><h4 class="font-bold text-teal-800 mb-1">🌿 外来種・生態系について</h4><ul class="list-disc list-inside space-y-1 pl-1"><li>持ち出し・放流の禁止。</li><li>リリースの可否は地域のルールに従う。</li></ul></div></div></section></div>`;
+                c.innerHTML = `<div class="space-y-6 pb-20">
+                    <section class="bg-white p-4 rounded shadow">
+                        <h3 class="font-bold text-gray-700 mb-3 border-b pb-2 flex items-center"><i class="fa-solid fa-book-open mr-2 text-blue-500"></i>アプリの使い方</h3>
+                        <div class="text-sm text-gray-600 space-y-4">
+                            <div><span class="font-bold text-blue-800 block mb-1">1. ボックスを登録する</span><p>「ボックス」タブ右上の<span class="bg-blue-500 text-white text-[10px] px-1 rounded">＋</span>ボタンから、手持ちのルアーケースごとの写真を登録します。</p></div>
+                            <div><span class="font-bold text-blue-800 block mb-1">2. ルアーを詳細登録する</span><p>登録したボックス詳細画面で「個別登録」を行います。一覧からルアーをタップして「編集」や「スペックをコピーして新規」が可能です。</p></div>
+                            <div><span class="font-bold text-blue-800 block mb-1">3. 戦力を分析する</span><p>「分析」タブでルアーの分布図を確認できます。手持ちルアーの偏りや、足りないレンジが一目でわかります。</p></div>
+                            <div><span class="font-bold text-blue-800 block mb-1">4. マスタデータの編集</span><p>「設定」タブで、メーカー名や選択肢をカスタマイズできます。</p></div>
+                            <div class="bg-red-50 p-2 rounded border border-red-200"><span class="font-bold text-red-600 block mb-1"><i class="fa-solid fa-circle-exclamation mr-1"></i>5. データのバックアップ（重要）</span><p class="text-red-600 font-bold text-xs mb-2">ブラウザのキャッシュ削除でデータが消えます。こまめに「書き出し」を行ってください。</p></div>
+                        </div>
+                    </section>
+
+                    <section class="bg-red-50 p-4 rounded shadow border border-red-100">
+                        <h3 class="font-bold text-red-700 mb-3 border-b border-red-200 pb-2 flex items-center"><i class="fa-solid fa-triangle-exclamation mr-2"></i>釣りの注意点</h3>
+                        <div class="text-sm text-gray-700 space-y-4">
+                            <div>
+                                <span class="font-bold block mb-1 text-red-800">安全を最優先に（安全第一）</span>
+                                <p>磯など足場の悪い場所ではスパイクシューズ等を装備し、ライフジャケットの着用を推奨します。万一に備え、できるだけ複数人で行動することをお勧めします。釣り禁止エリアには立ち入ってはいけません。</p>
+                            </div>
+                            <div>
+                                <span class="font-bold block mb-1 text-red-800">事前の天候確認</span>
+                                <p>風速、波の高さ、潮位を事前にチェックしましょう。雨の際は、足場の滑りやすさ等の状況が変化します。初めて訪れる場所は特に注意が必要です。</p>
+                            </div>
+                            <div>
+                                <span class="font-bold block mb-1 text-red-800">釣り環境の保護</span>
+                                <p>ゴミは持ち帰るようにしましょう。フック、ライン、鉛の放置は、野鳥などの野生生物に深刻な被害を与える恐れがあります。</p>
+                            </div>
+                            <div>
+                                <span class="font-bold block mb-1 text-red-800">事故防止と安全対策（フック事故）</span>
+                                <p>釣り針から身を守るため、帽子や偏光グラスの着用を推奨します。特に釣り公園など人が多い場所では、キャストする際に周囲の安全へ十分注意しましょう。</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="bg-teal-50 p-4 rounded shadow border border-teal-100">
+                        <h3 class="font-bold text-teal-700 mb-3 border-b border-teal-200 pb-2 flex items-center"><i class="fa-solid fa-hand-holding-heart mr-2"></i>魚と自然への配慮</h3>
+                        <div class="text-sm text-gray-700 space-y-4">
+                            <div>
+                                <h4 class="font-bold text-teal-800 mb-2 border-b border-teal-200 inline-block">数を減らしている種への配慮</h4>
+                                <div class="space-y-2">
+                                    <div><span class="font-bold text-teal-900">適切なキープとリリース：</span><br>持ち帰り（キープ）数の制限を意識し、必要以上の魚はリリース（再放流）しましょう。</div>
+                                    <div><span class="font-bold text-teal-900">魚体へのダメージ軽減：</span><br>魚を傷つけにくいバーブレスフック（カエシのない針）の使用や、濡れた手での取り扱いなど、丁寧な扱いを心がけましょう。</div>
+                                    <div><span class="font-bold text-teal-900">釣行の削減：</span><br>数を減らしている種に対しては、狙う魚種の転換、釣行回数の抑制、繁殖期等の回避を検討しましょう。</div>
+                                </div>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-teal-800 mb-2 border-b border-teal-200 inline-block">外来種と生態系への配慮</h4>
+                                <div class="space-y-2">
+                                    <div><span class="font-bold text-teal-900">持ち出し・放流について：</span><br>特定外来生物の生きたままの持ち出しや放流は法律で禁止されているため、ご注意ください。</div>
+                                    <div><span class="font-bold text-teal-900">地域ルールの確認：</span><br>リリースの可否や遊漁規則については、その地域の条例やルールに従ってください。</div>
+                                    <div><span class="font-bold text-teal-900">調査への協力：</span><br>見慣れない魚を釣り上げた場合や、見慣れない症状をした魚を見た場合は、専門機関へ情報を提供しましょう。</div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </div>`;
             }
             renderSettings(c) {
                 document.getElementById('header-actions').innerHTML = ''; const m = this.db.data.master, s = this.db.data.settings;
