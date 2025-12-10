@@ -8,14 +8,10 @@
     <!-- PWA設定 -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1e293b">
-    
-    <!-- 【修正】警告対応: モバイルWebアプリ対応のメタタグを標準・iOS両方に対応させる -->
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Lure Hangar">
-    
-    <!-- アイコン設定 (画像ファイル favicon.png と icon-512.png をアップロードするとエラーが消えます) -->
     <link rel="apple-touch-icon" href="icon-512.png">
     <link rel="icon" type="image/png" href="favicon.png">
     
@@ -24,219 +20,102 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
-        :root {
-            --app-bg-color: #f3f4f6;
-            --app-font-scale: 100%;
-        }
-
-        body { 
-            -webkit-tap-highlight-color: transparent; 
-            user-select: none; 
-            background-color: #333;
-            padding-bottom: env(safe-area-inset-bottom, 80px);
-            font-size: var(--app-font-scale);
-        }
-
-        #app {
-            background-color: var(--app-bg-color);
-            transition: background-color 0.3s ease;
-        }
-        
+        :root { --app-bg-color: #f3f4f6; --app-font-scale: 100%; }
+        body { -webkit-tap-highlight-color: transparent; user-select: none; background-color: #333; padding-bottom: env(safe-area-inset-bottom, 80px); font-size: var(--app-font-scale); }
+        #app { background-color: var(--app-bg-color); transition: background-color 0.3s ease; }
         ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
-
-        .image-preview {
-            background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 20.5V18H0v-2h20v-2H0v-2h20v-2H0V8h20V6H0V4h20V2H0V0h22v22h-2z' fill='%239C92AC' fill-opacity='0.1' fill-rule='evenodd'/%3E%3C/svg%3E");
-        }
-
+        .image-preview { background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 20.5V18H0v-2h20v-2H0v-2h20v-2H0V8h20V6H0V4h20V2H0V0h22v22h-2z' fill='%239C92AC' fill-opacity='0.1' fill-rule='evenodd'/%3E%3C/svg%3E"); }
         .modal-enter { opacity: 0; transform: scale(0.95); }
         .modal-enter-active { opacity: 1; transform: scale(1); transition: all 0.2s ease-out; }
         .modal-exit { opacity: 1; transform: scale(1); }
         .modal-exit-active { opacity: 0; transform: scale(0.95); transition: all 0.2s ease-in; }
-
         .hidden-input { display: none; }
     </style>
 </head>
 <body class="text-gray-800 font-sans antialiased h-screen overflow-hidden flex justify-center bg-gray-900">
 
     <div id="app" class="w-full max-w-md h-full shadow-xl overflow-hidden relative flex flex-col mx-auto">
-        
         <header class="bg-slate-800 text-white p-4 sticky top-0 z-50 flex justify-between items-center shadow-md shrink-0 pt-safe-top">
-            <!-- 文字サイズと折り返し設定は前回の修正を維持 -->
             <h1 class="text-sm font-bold tracking-wide whitespace-nowrap"><i class="fa-solid fa-fish-fins mr-2"></i>BLNCR LURE HANGAR</h1>
             <div id="header-actions"></div>
         </header>
-
-        <main id="main-content" class="p-4 overflow-y-auto grow">
-            <!-- Dynamic Content -->
-        </main>
-
+        <main id="main-content" class="p-4 overflow-y-auto grow"></main>
         <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around items-center pb-safe-bottom max-w-md mx-auto z-50 h-16 shrink-0">
-            <button onclick="router.navigate('home')" class="nav-btn flex-1 h-full text-center text-gray-500 hover:text-blue-600 focus:text-blue-600 transition" data-target="home">
-                <div class="flex flex-col items-center justify-center h-full">
-                    <i class="fa-solid fa-layer-group text-xl mb-1"></i>
-                    <span class="text-[10px]">ボックス</span>
-                </div>
-            </button>
-            <button onclick="router.navigate('analysis')" class="nav-btn flex-1 h-full text-center text-gray-500 hover:text-blue-600 focus:text-blue-600 transition" data-target="analysis">
-                <div class="flex flex-col items-center justify-center h-full">
-                    <i class="fa-solid fa-chart-line text-xl mb-1"></i>
-                    <span class="text-[10px]">分析</span>
-                </div>
-            </button>
-            <button onclick="router.navigate('notes')" class="nav-btn flex-1 h-full text-center text-gray-500 hover:text-blue-600 focus:text-blue-600 transition" data-target="notes">
-                <div class="flex flex-col items-center justify-center h-full">
-                    <i class="fa-solid fa-triangle-exclamation text-xl mb-1"></i>
-                    <span class="text-[10px]">注意</span>
-                </div>
-            </button>
-            <button onclick="router.navigate('settings')" class="nav-btn flex-1 h-full text-center text-gray-500 hover:text-blue-600 focus:text-blue-600 transition" data-target="settings">
-                <div class="flex flex-col items-center justify-center h-full">
-                    <i class="fa-solid fa-sliders text-xl mb-1"></i>
-                    <span class="text-[10px]">設定</span>
-                </div>
-            </button>
+            <button onclick="router.navigate('home')" class="nav-btn flex-1 h-full text-center text-gray-500 hover:text-blue-600 focus:text-blue-600 transition" data-target="home"><div class="flex flex-col items-center justify-center h-full"><i class="fa-solid fa-layer-group text-xl mb-1"></i><span class="text-[10px]">ボックス</span></div></button>
+            <button onclick="router.navigate('analysis')" class="nav-btn flex-1 h-full text-center text-gray-500 hover:text-blue-600 focus:text-blue-600 transition" data-target="analysis"><div class="flex flex-col items-center justify-center h-full"><i class="fa-solid fa-chart-line text-xl mb-1"></i><span class="text-[10px]">分析</span></div></button>
+            <button onclick="router.navigate('notes')" class="nav-btn flex-1 h-full text-center text-gray-500 hover:text-blue-600 focus:text-blue-600 transition" data-target="notes"><div class="flex flex-col items-center justify-center h-full"><i class="fa-solid fa-triangle-exclamation text-xl mb-1"></i><span class="text-[10px]">注意</span></div></button>
+            <button onclick="router.navigate('settings')" class="nav-btn flex-1 h-full text-center text-gray-500 hover:text-blue-600 focus:text-blue-600 transition" data-target="settings"><div class="flex flex-col items-center justify-center h-full"><i class="fa-solid fa-sliders text-xl mb-1"></i><span class="text-[10px]">設定</span></div></button>
         </nav>
-
         <div id="modal-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-[60] hidden flex items-center justify-center p-4">
             <div id="modal-container" class="bg-white rounded-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl transform transition-all"></div>
         </div>
-        
-        <div id="toast" class="fixed top-20 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-lg z-[70] transition-opacity duration-300 opacity-0 pointer-events-none text-sm">
-            Notification
-        </div>
-
+        <div id="toast" class="fixed top-20 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-lg z-[70] transition-opacity duration-300 opacity-0 pointer-events-none text-sm">Notification</div>
     </div>
 
     <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js')
-                    .then(reg => console.log('Service Worker Registered!', reg))
-                    .catch(err => console.log('Service Worker registration failed: ', err));
-            });
-        }
+        if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').then(reg => console.log('SW Registered', reg)).catch(err => console.log('SW Fail', err)); }); }
 
         const Utils = {
             uuid: () => Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
             compressImage: (file, maxWidth = 600, quality = 0.6) => {
                 return new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.readAsDataURL(file);
-                    reader.onload = (event) => {
-                        const img = new Image();
-                        img.src = event.target.result;
-                        img.onload = () => {
-                            let width = img.width;
-                            let height = img.height;
-                            if (width > maxWidth) {
-                                height *= maxWidth / width;
-                                width = maxWidth;
-                            }
-                            const canvas = document.createElement('canvas');
-                            canvas.width = width;
-                            canvas.height = height;
-                            const ctx = canvas.getContext('2d');
-                            ctx.drawImage(img, 0, 0, width, height);
-                            resolve(canvas.toDataURL('image/jpeg', quality));
-                        };
-                        img.onerror = (err) => reject(err);
-                    };
-                    reader.onerror = (err) => reject(err);
+                    const reader = new FileReader(); reader.readAsDataURL(file);
+                    reader.onload = (e) => { const img = new Image(); img.src = e.target.result; img.onload = () => { let w = img.width, h = img.height; if(w > maxWidth){ h *= maxWidth/w; w = maxWidth; } const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h); resolve(c.toDataURL('image/jpeg', quality)); }; img.onerror = reject; }; reader.onerror = reject;
                 });
             },
-            formatDate: (ts) => {
-                if(!ts) return '';
-                const d = new Date(ts);
-                return isNaN(d.getTime()) ? ts : d.toLocaleDateString('ja-JP');
-            },
-            getTodayString: () => {
-                const d = new Date();
-                const month = ('0' + (d.getMonth() + 1)).slice(-2);
-                const day = ('0' + d.getDate()).slice(-2);
-                return `${d.getFullYear()}-${month}-${day}`;
-            },
-            showToast: (msg) => {
-                const toast = document.getElementById('toast');
-                toast.textContent = msg;
-                toast.classList.remove('opacity-0');
-                setTimeout(() => toast.classList.add('opacity-0'), 3000);
-            }
+            formatDate: (ts) => ts ? new Date(ts).toLocaleDateString('ja-JP') : '',
+            getTodayString: () => { const d = new Date(); return `${d.getFullYear()}-${('0'+(d.getMonth()+1)).slice(-2)}-${('0'+d.getDate()).slice(-2)}`; },
+            showToast: (msg) => { const t = document.getElementById('toast'); t.textContent = msg; t.classList.remove('opacity-0'); setTimeout(() => t.classList.add('opacity-0'), 3000); }
         };
 
         class DataManager {
             constructor() {
                 this.STORAGE_KEY = 'lure_hangar_v2_1_data';
                 this.data = this.load() || this.getInitialData();
-                if(!this.data.settings) {
-                    this.data.settings = { fontSize: 'medium', bgColor: '#f3f4f6' };
-                    this.save();
-                }
+                if(!this.data.master.hooks) { this.data.master.hooks = ['#14', '#12', '#10', '#8', '#6', '#5', '#4', '#3', '#2', '#1', '1/0', '2/0', '3/0', '4/0', '5/0']; this.save(); }
+                if(!this.data.settings) { this.data.settings = { fontSize: 'medium', bgColor: '#f3f4f6' }; this.save(); }
             }
             getInitialData() {
                 return {
-                    boxes: [],
-                    lures: [],
+                    boxes: [], lures: [],
                     master: {
-                        manufacturers: ['Daiwa', 'Shimano'],
-                        types: ['ミノー', 'ペンシル', 'ポッパー', 'クランク', 'バイブレーション', 'スピナー', 'スプーン', 'ジグ'],
+                        manufacturers: ['Daiwa', 'Shimano'], types: ['ミノー', 'ペンシル', 'ポッパー', 'クランク', 'バイブレーション', 'スピナー', 'スプーン', 'ジグ'],
                         sinkTypes: ['F (フローティング)', 'S (シンキング)', 'SP (サスペンド)', 'HS (ヘビーシンキング)'],
-                        fields: ['渓流', 'リバー', 'サーフ', 'ロック', 'ショア', 'オフショア'],
-                        targets: ['トラウト', 'バス', 'シーバス', 'フラット', 'メバル', '青物', 'ロックフィッシュ']
+                        fields: ['渓流', 'リバー', 'サーフ', 'ロック', 'ショア', 'オフショア'], targets: ['トラウト', 'バス', 'シーバス', 'フラット', 'メバル', '青物', 'ロックフィッシュ'],
+                        hooks: ['#14', '#12', '#10', '#8', '#6', '#5', '#4', '#3', '#2', '#1', '1/0', '2/0', '3/0', '4/0', '5/0']
                     },
                     settings: { fontSize: 'medium', bgColor: '#f3f4f6' }
                 };
             }
-            load() {
-                const json = localStorage.getItem(this.STORAGE_KEY);
-                return json ? JSON.parse(json) : null;
-            }
-            save() {
-                try {
-                    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.data));
-                } catch (e) {
-                    alert('容量オーバーです。古いボックスや画像を削除して容量を空けてください。');
-                    console.error(e);
-                }
-            }
-            addBox(box) { this.data.boxes.unshift(box); this.save(); }
-            updateBox(b) { const i = this.data.boxes.findIndex(x=>x.id===b.id); if(i!==-1) this.data.boxes[i]=b; this.save(); }
-            deleteBox(id) { this.data.boxes=this.data.boxes.filter(b=>b.id!==id); this.data.lures=this.data.lures.filter(l=>l.boxId!==id); this.save(); }
-            getBox(id) { return this.data.boxes.find(b=>b.id===id); }
-            getAllTags() { const t=new Set(); this.data.boxes.forEach(b=>(b.tags||[]).forEach(x=>t.add(x))); return Array.from(t).sort(); }
+            load() { const j = localStorage.getItem(this.STORAGE_KEY); return j ? JSON.parse(j) : null; }
+            save() { try { localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.data)); } catch (e) { alert('容量オーバーです。'); } }
+            addBox(b) { this.data.boxes.unshift(b); this.save(); }
+            updateBox(b) { const i = this.data.boxes.findIndex(x => x.id === b.id); if (i !== -1) this.data.boxes[i] = b; this.save(); }
+            deleteBox(id) { this.data.boxes = this.data.boxes.filter(b => b.id !== id); this.data.lures = this.data.lures.filter(l => l.boxId !== id); this.save(); }
+            getBox(id) { return this.data.boxes.find(b => b.id === id); }
+            getAllTags() { const t = new Set(); this.data.boxes.forEach(b => (b.tags || []).forEach(x => t.add(x))); return Array.from(t).sort(); }
             addLure(l) { this.data.lures.push(l); this.save(); }
-            deleteLure(id) { this.data.lures=this.data.lures.filter(l=>l.id!==id); this.save(); }
-            getLuresByBoxId(id) { return this.data.lures.filter(l=>l.boxId===id); }
+            updateLure(l) { const i = this.data.lures.findIndex(x => x.id === l.id); if (i !== -1) this.data.lures[i] = l; this.save(); }
+            deleteLure(id) { this.data.lures = this.data.lures.filter(l => l.id !== id); this.save(); }
+            getLuresByBoxId(id) { return this.data.lures.filter(l => l.boxId === id); }
             getAllLures() { return this.data.lures; }
-            updateMaster(k,l) { if(this.data.master[k]) this.data.master[k]=l; this.save(); }
-            updateSettings(s) { this.data.settings={...this.data.settings, ...s}; this.save(); }
-            exportData() {
-                const b = new Blob([JSON.stringify(this.data)], {type: "application/json"});
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(b);
-                a.download = `lure_hangar_backup_${new Date().toISOString().slice(0,10)}.json`;
-                a.click();
-            }
-            importData(s) {
-                try {
-                    const p = JSON.parse(s);
-                    if(p.boxes && p.lures) { this.data=p; this.save(); return true; }
-                } catch(e) {}
-                return false;
-            }
+            updateMaster(k, l) { if (this.data.master[k]) this.data.master[k] = l; this.save(); }
+            updateSettings(s) { this.data.settings = { ...this.data.settings, ...s }; this.save(); }
+            exportData() { const b = new Blob([JSON.stringify(this.data)], { type: "application/json" }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `lure_hangar_backup_${new Date().toISOString().slice(0, 10)}.json`; a.click(); }
+            importData(s) { try { const p = JSON.parse(s); if (p.boxes && p.lures) { this.data = p; this.save(); return true; } } catch (e) { } return false; }
         }
 
         class AppRouter {
             constructor(ui) { this.ui = ui; this.currentRoute = 'home'; }
-            navigate(r, p=null) {
+            navigate(r, p = null) {
                 this.currentRoute = r;
                 document.querySelectorAll('.nav-btn').forEach(b => {
-                    if(b.dataset.target===r) { b.classList.add('text-blue-600'); b.classList.remove('text-gray-500'); }
-                    else if(['home','analysis','notes','settings'].includes(b.dataset.target)) { b.classList.remove('text-blue-600'); b.classList.add('text-gray-500'); }
+                    if (b.dataset.target === r) { b.classList.add('text-blue-600'); b.classList.remove('text-gray-500'); }
+                    else if (['home', 'analysis', 'notes', 'settings'].includes(b.dataset.target)) { b.classList.remove('text-blue-600'); b.classList.add('text-gray-500'); }
                 });
-                const c = document.getElementById('main-content');
-                c.innerHTML = '';
-                switch(r) {
+                const c = document.getElementById('main-content'); c.innerHTML = '';
+                switch (r) {
                     case 'home': this.ui.renderHome(c); break;
                     case 'boxDetail': this.ui.renderBoxDetail(c, p); break;
                     case 'analysis': this.ui.renderAnalysis(c); break;
@@ -247,220 +126,224 @@
         }
 
         class UIManager {
-            constructor(db) { this.db=db; this.chartInstance=null; this.boxSortKey='default'; this.analysisFilterTag='all'; this.applyTheme(); }
+            constructor(db) { this.db = db; this.chartInstance = null; this.boxSortKey = 'default'; this.analysisFilterTag = 'all'; this.applyTheme(); }
             applyTheme() {
-                const s = this.db.data.settings;
-                const r = document.documentElement;
-                r.style.setProperty('--app-bg-color', s.bgColor);
-                let scale='100%'; if(s.fontSize==='small') scale='85%'; if(s.fontSize==='large') scale='115%';
+                const s = this.db.data.settings; const r = document.documentElement; r.style.setProperty('--app-bg-color', s.bgColor);
+                let scale = '100%'; if (s.fontSize === 'small') scale = '85%'; if (s.fontSize === 'large') scale = '115%';
                 r.style.setProperty('--app-font-scale', scale);
             }
             renderHome(c) {
                 document.getElementById('header-actions').innerHTML = `<button onclick="ui.openBoxModal()" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-full text-sm font-bold shadow"><i class="fa-solid fa-plus mr-1"></i>BOX追加</button>`;
-                c.innerHTML = '';
-                const boxes = this.db.data.boxes;
-                if(boxes.length===0) { c.innerHTML='<div class="flex flex-col items-center justify-center h-64 text-gray-400"><i class="fa-solid fa-box-open text-6xl mb-4"></i><p>ボックスが登録されていません</p></div>'; return; }
-                const grid = document.createElement('div');
-                grid.className = 'grid grid-cols-2 gap-4 pb-20';
+                c.innerHTML = ''; const boxes = this.db.data.boxes;
+                if (boxes.length === 0) { c.innerHTML = '<div class="flex flex-col items-center justify-center h-64 text-gray-400"><i class="fa-solid fa-box-open text-6xl mb-4"></i><p>ボックスが登録されていません</p></div>'; return; }
+                const grid = document.createElement('div'); grid.className = 'grid grid-cols-2 gap-4 pb-20';
                 boxes.forEach(b => {
                     const cnt = this.db.getLuresByBoxId(b.id).length;
                     const el = document.createElement('div');
-                    el.className='bg-white rounded-lg shadow overflow-hidden relative group cursor-pointer active:scale-95 transition-transform duration-100';
-                    el.onclick=()=>router.navigate('boxDetail', b.id);
-                    el.innerHTML=`
-                        <div class="aspect-square bg-gray-200 relative">
-                            ${b.image ? `<img src="${b.image}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-gray-400"><i class="fa-solid fa-image text-3xl"></i></div>`}
-                            <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2 pt-6">
-                                <div class="text-white text-xs font-bold truncate">${b.note||'No Title'}</div>
-                                <div class="flex gap-1 mt-1 flex-wrap h-5 overflow-hidden">${(b.tags||[]).slice(0,3).map(t=>`<span class="bg-blue-500/80 text-[8px] text-white px-1 rounded">${t}</span>`).join('')}</div>
-                            </div>
-                            <div class="absolute top-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full">${cnt}個</div>
-                        </div>`;
+                    el.className = 'bg-white rounded-lg shadow overflow-hidden relative group cursor-pointer active:scale-95 transition-transform duration-100';
+                    el.onclick = () => router.navigate('boxDetail', b.id);
+                    el.innerHTML = `<div class="aspect-square bg-gray-200 relative">${b.image ? `<img src="${b.image}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-gray-400"><i class="fa-solid fa-image text-3xl"></i></div>`}<div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2 pt-6"><div class="text-white text-xs font-bold truncate">${b.note || 'No Title'}</div><div class="flex gap-1 mt-1 flex-wrap h-5 overflow-hidden">${(b.tags || []).slice(0, 3).map(t => `<span class="bg-blue-500/80 text-[8px] text-white px-1 rounded">${t}</span>`).join('')}</div></div><div class="absolute top-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full">${cnt}個</div></div>`;
                     grid.appendChild(el);
                 });
                 c.appendChild(grid);
             }
             renderBoxDetail(c, bid) {
-                const b = this.db.getBox(bid);
-                if(!b) return router.navigate('home');
+                const b = this.db.getBox(bid); if (!b) return router.navigate('home');
                 document.getElementById('header-actions').innerHTML = `<button onclick="router.navigate('home')" class="text-gray-300 hover:text-white mr-3"><i class="fa-solid fa-arrow-left"></i></button><button onclick="ui.openBoxModal('${bid}')" class="text-white hover:text-blue-200 mr-3"><i class="fa-solid fa-pen-to-square"></i></button><button onclick="ui.deleteBox('${bid}')" class="text-red-400 hover:text-red-300"><i class="fa-solid fa-trash"></i></button>`;
                 let ls = [...this.db.getLuresByBoxId(bid)];
-                if(this.boxSortKey==='sizeDesc') ls.sort((a,b)=>(b.length||0)-(a.length||0));
-                if(this.boxSortKey==='sizeAsc') ls.sort((a,b)=>(a.length||0)-(b.length||0));
-                if(this.boxSortKey==='weightDesc') ls.sort((a,b)=>(b.weight||0)-(a.weight||0));
-                if(this.boxSortKey==='nameAsc') ls.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-                
+                if (this.boxSortKey === 'sizeDesc') ls.sort((a, b) => (b.length || 0) - (a.length || 0));
+                if (this.boxSortKey === 'sizeAsc') ls.sort((a, b) => (a.length || 0) - (b.length || 0));
+                if (this.boxSortKey === 'weightDesc') ls.sort((a, b) => (b.weight || 0) - (a.weight || 0));
+                if (this.boxSortKey === 'nameAsc') ls.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
                 c.innerHTML = `
                     <div class="bg-white rounded-lg shadow mb-6 overflow-hidden">
-                        <div class="h-48 bg-gray-200 relative group">
-                             ${b.image ? `<img src="${b.image}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center"><i class="fa-solid fa-image text-4xl text-gray-300"></i></div>`}
-                             <div class="absolute bottom-2 left-2 flex gap-1 flex-wrap">${(b.tags||[]).map(t=>`<span class="bg-gray-800/70 text-white text-xs px-2 py-1 rounded">${t}</span>`).join('')}</div>
-                        </div>
-                        <div class="p-4"><h2 class="font-bold text-lg mb-1">${b.note||'名称未設定'}</h2><p class="text-xs text-gray-500">登録日: ${Utils.formatDate(b.timestamp)}</p></div>
+                        <div class="h-48 bg-gray-200 relative group">${b.image ? `<img src="${b.image}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center"><i class="fa-solid fa-image text-4xl text-gray-300"></i></div>`}<div class="absolute bottom-2 left-2 flex gap-1 flex-wrap">${(b.tags || []).map(t => `<span class="bg-gray-800/70 text-white text-xs px-2 py-1 rounded">${t}</span>`).join('')}</div></div>
+                        <div class="p-4"><h2 class="font-bold text-lg mb-1">${b.note || '名称未設定'}</h2><p class="text-xs text-gray-500">登録日: ${Utils.formatDate(b.timestamp)}</p></div>
                     </div>
                     <div class="flex justify-between items-center mb-2">
                         <h3 class="font-bold text-gray-700">登録ルアー (${ls.length})</h3>
                         <div class="flex gap-2">
-                            <select class="text-xs border rounded bg-white p-1" onchange="ui.setBoxSort(this.value, '${bid}')">
-                                <option value="default" ${this.boxSortKey==='default'?'selected':''}>登録順</option>
-                                <option value="sizeDesc" ${this.boxSortKey==='sizeDesc'?'selected':''}>大きい順</option>
-                                <option value="sizeAsc" ${this.boxSortKey==='sizeAsc'?'selected':''}>小さい順</option>
-                                <option value="weightDesc" ${this.boxSortKey==='weightDesc'?'selected':''}>重い順</option>
-                                <option value="nameAsc" ${this.boxSortKey==='nameAsc'?'selected':''}>名前順</option>
-                            </select>
-                            <button onclick="ui.openAddLureModal('${bid}')" class="bg-blue-600 text-white text-xs px-3 py-2 rounded shadow hover:bg-blue-700"><i class="fa-solid fa-plus mr-1"></i>追加</button>
+                            <select class="text-xs border rounded bg-white p-1" onchange="ui.setBoxSort(this.value, '${bid}')"><option value="default" ${this.boxSortKey === 'default' ? 'selected' : ''}>登録順</option><option value="sizeDesc" ${this.boxSortKey === 'sizeDesc' ? 'selected' : ''}>大きい順</option><option value="sizeAsc" ${this.boxSortKey === 'sizeAsc' ? 'selected' : ''}>小さい順</option><option value="weightDesc" ${this.boxSortKey === 'weightDesc' ? 'selected' : ''}>重い順</option><option value="nameAsc" ${this.boxSortKey === 'nameAsc' ? 'selected' : ''}>名前順</option></select>
+                            <button onclick="ui.openLureForm('${bid}')" class="bg-blue-600 text-white text-xs px-3 py-2 rounded shadow hover:bg-blue-700"><i class="fa-solid fa-plus mr-1"></i>追加</button>
                         </div>
                     </div>
                     <div class="space-y-3 pb-24">
                         ${ls.map(l => {
-                            const isLost = l.status==='ロスト';
-                            return `<div class="bg-white p-3 rounded shadow-sm border-l-4 ${isLost?'border-gray-400 bg-gray-50 opacity-70':'border-blue-500'} flex justify-between items-center" onclick="ui.openEditLureModal('${l.id}')">
+                            const isLost = l.status === 'ロスト';
+                            const isSink = l.sinkType && (l.sinkType.includes('S') || l.sinkType.includes('HS'));
+                            const depthLabel = isSink ? (l.sinkRate ? `${l.sinkRate}m/s` : '') : (l.depth ? `${l.depth}m` : '');
+                            return `<div class="bg-white p-3 rounded shadow-sm border-l-4 ${isLost ? 'border-gray-400 bg-gray-50 opacity-70' : 'border-blue-500'} flex justify-between items-center" onclick="ui.openLureDetail('${l.id}')">
                                 <div>
-                                    <div class="text-xs text-gray-500 flex gap-2"><span>${l.maker}</span>${l.status&&l.status!=='所持'?`<span class="bg-gray-200 px-1 rounded text-[10px]">${l.status}</span>`:''}</div>
-                                    <div class="font-bold text-sm ${isLost?'line-through text-gray-500':''}">${l.name}</div>
-                                    <div class="text-xs mt-1 text-gray-600 space-x-2"><span class="bg-gray-100 px-1 rounded">${l.type}</span><span>${l.length}mm</span><span>${l.weight}g</span>${l.depth?`<span>${l.depth}m</span>`:''}${l.hookSize?`<span class="text-xs border border-gray-300 px-1 rounded">#${l.hookSize}</span>`:''}</div>
+                                    <div class="text-xs text-gray-500 flex gap-2"><span>${l.maker}</span>${l.status && l.status !== '所持' ? `<span class="bg-gray-200 px-1 rounded text-[10px]">${l.status}</span>` : ''}</div>
+                                    <div class="font-bold text-sm ${isLost ? 'line-through text-gray-500' : ''}">${l.name}</div>
+                                    <div class="text-xs mt-1 text-gray-600 space-x-2"><span class="bg-gray-100 px-1 rounded">${l.type}</span><span>${l.length}mm</span><span>${l.weight}g</span>${depthLabel ? `<span>${depthLabel}</span>` : ''}${l.hookSize ? `<span class="text-xs border border-gray-300 px-1 rounded">#${l.hookSize}</span>` : ''}</div>
                                 </div>
-                                <div class="text-right"><div class="text-xs font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded mb-1 inline-block">${(l.sinkType||'').split(' ')[0]}</div><div class="text-xs text-gray-400">×${l.count}</div></div>
-                            </div>`}).join('')}
+                                <div class="text-right"><div class="text-xs font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded mb-1 inline-block">${(l.sinkType || '').split(' ')[0]}</div><div class="text-xs text-gray-400">×${l.count}</div></div>
+                            </div>`
+                        }).join('')}
                     </div>`;
             }
-            setBoxSort(k, bid) { this.boxSortKey=k; this.renderBoxDetail(document.getElementById('main-content'), bid); }
+            setBoxSort(k, bid) { this.boxSortKey = k; this.renderBoxDetail(document.getElementById('main-content'), bid); }
+            
+            // --- Analysis & Notes & Settings: No changes required ---
             renderAnalysis(c) {
-                document.getElementById('header-actions').innerHTML = '';
-                const tags = this.db.getAllTags();
-                c.innerHTML = `
-                    <div class="bg-white p-4 rounded-lg shadow mb-4">
-                        <div class="mb-4 text-sm"><label class="block text-xs text-gray-500 mb-1">タグで絞り込み</label><select id="chart-filter" class="w-full bg-blue-50 border border-blue-200 rounded p-2 text-blue-900 font-bold" onchange="ui.updateChart()"><option value="all">すべてのルアーを表示</option>${tags.map(t=>`<option value="${t}" ${this.analysisFilterTag===t?'selected':''}>${t}</option>`).join('')}</select></div>
-                        <div class="flex gap-2 mb-4 text-sm">
-                            <div class="flex-1"><label class="block text-xs text-gray-500 mb-1">X軸</label><select id="chart-x" class="w-full bg-gray-50 border rounded p-1" onchange="ui.updateChart()"><option value="length" selected>長さ (mm)</option><option value="weight">重さ (g)</option><option value="depth">深度 (m)</option></select></div>
-                            <div class="flex-1"><label class="block text-xs text-gray-500 mb-1">Y軸</label><select id="chart-y" class="w-full bg-gray-50 border rounded p-1" onchange="ui.updateChart()"><option value="length">長さ (mm)</option><option value="weight" selected>重さ (g)</option><option value="depth">深度 (m)</option></select></div>
-                        </div>
-                        <div class="relative w-full h-64"><canvas id="lureChart"></canvas></div>
-                    </div>
-                    <div id="chart-detail" class="hidden bg-white border border-blue-200 p-3 rounded shadow animate-pulse"></div>`;
-                setTimeout(()=>this.updateChart(),100);
+                document.getElementById('header-actions').innerHTML = ''; const tags = this.db.getAllTags();
+                c.innerHTML = `<div class="bg-white p-4 rounded-lg shadow mb-4"><div class="mb-4 text-sm"><label class="block text-xs text-gray-500 mb-1">タグで絞り込み</label><select id="chart-filter" class="w-full bg-blue-50 border border-blue-200 rounded p-2 text-blue-900 font-bold" onchange="ui.updateChart()"><option value="all">すべてのルアーを表示</option>${tags.map(t => `<option value="${t}" ${this.analysisFilterTag === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div><div class="flex gap-2 mb-4 text-sm"><div class="flex-1"><label class="block text-xs text-gray-500 mb-1">X軸</label><select id="chart-x" class="w-full bg-gray-50 border rounded p-1" onchange="ui.updateChart()"><option value="length" selected>長さ (mm)</option><option value="weight">重さ (g)</option><option value="depth">潜行深度 (m)</option><option value="sinkRate">沈降速度 (m/s)</option></select></div><div class="flex-1"><label class="block text-xs text-gray-500 mb-1">Y軸</label><select id="chart-y" class="w-full bg-gray-50 border rounded p-1" onchange="ui.updateChart()"><option value="length">長さ (mm)</option><option value="weight" selected>重さ (g)</option><option value="depth">潜行深度 (m)</option><option value="sinkRate">沈降速度 (m/s)</option></select></div></div><div class="relative w-full h-64"><canvas id="lureChart"></canvas></div></div><div id="chart-detail" class="hidden bg-white border border-blue-200 p-3 rounded shadow animate-pulse"></div>`;
+                setTimeout(() => this.updateChart(), 100);
             }
             updateChart() {
                 this.analysisFilterTag = document.getElementById('chart-filter').value;
-                const xk=document.getElementById('chart-x').value, yk=document.getElementById('chart-y').value;
-                const ctx=document.getElementById('lureChart').getContext('2d');
-                let ls=this.db.getAllLures();
-                if(this.analysisFilterTag!=='all') {
-                    const ids=this.db.data.boxes.filter(b=>(b.tags||[]).includes(this.analysisFilterTag)).map(b=>b.id);
-                    ls=ls.filter(l=>ids.includes(l.boxId));
-                }
-                const datasets=[], types=[...new Set(ls.map(l=>l.sinkType||'Unknown'))];
-                const colors={'F (フローティング)':'#3b82f6','S (シンキング)':'#ef4444','SP (サスペンド)':'#eab308','HS (ヘビーシンキング)':'#9333ea','Unknown':'#9ca3af'};
-                types.forEach(t=>{
-                    datasets.push({ label:t, data:ls.filter(l=>(l.sinkType||'Unknown')===t).map(l=>({x:Number(l[xk]),y:Number(l[yk]),lure:l})), backgroundColor:colors[t]||colors['Unknown'], pointRadius:6 });
+                const xk = document.getElementById('chart-x').value, yk = document.getElementById('chart-y').value;
+                const ctx = document.getElementById('lureChart').getContext('2d');
+                let ls = this.db.getAllLures();
+                if (this.analysisFilterTag !== 'all') { const ids = this.db.data.boxes.filter(b => (b.tags || []).includes(this.analysisFilterTag)).map(b => b.id); ls = ls.filter(l => ids.includes(l.boxId)); }
+                const datasets = [], types = [...new Set(ls.map(l => l.sinkType || 'Unknown'))];
+                const colors = { 'F (フローティング)': '#3b82f6', 'S (シンキング)': '#ef4444', 'SP (サスペンド)': '#eab308', 'HS (ヘビーシンキング)': '#9333ea', 'Unknown': '#9ca3af' };
+                types.forEach(t => {
+                    datasets.push({
+                        label: t, data: ls.filter(l => (l.sinkType || 'Unknown') === t).map(l => ({ x: Number(l[xk] || 0), y: Number(l[yk] || 0), lure: l })),
+                        backgroundColor: colors[t] || colors['Unknown'], pointRadius: 6
+                    });
                 });
-                if(this.chartInstance) this.chartInstance.destroy();
-                this.chartInstance = new Chart(ctx, {
-                    type: 'scatter', data: {datasets},
-                    options: { responsive:true, maintainAspectRatio:false, scales:{x:{title:{display:true,text:xk}},y:{title:{display:true,text:yk}}},
-                    onClick: (e, el) => { if(el.length>0) {
-                        const l = this.chartInstance.data.datasets[el[0].datasetIndex].data[el[0].index].lure;
-                        const d=document.getElementById('chart-detail'); d.classList.remove('hidden');
-                        d.innerHTML=`<div class="font-bold text-blue-800">${l.name}</div><div class="text-xs text-gray-600 mb-1">${l.maker} / ${l.color}</div><div class="text-xs font-mono bg-gray-100 p-1 inline-block rounded">L:${l.length}mm / W:${l.weight}g / D:${l.depth}m</div>${l.status&&l.status!=='所持'?`<div class="mt-1 text-xs text-red-500 font-bold">${l.status}</div>`:''}`;
-                    }}}
-                });
+                if (this.chartInstance) this.chartInstance.destroy();
+                this.chartInstance = new Chart(ctx, { type: 'scatter', data: { datasets }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { title: { display: true, text: xk } }, y: { title: { display: true, text: yk } } }, onClick: (e, el) => { if (el.length > 0) { const l = this.chartInstance.data.datasets[el[0].datasetIndex].data[el[0].index].lure; const d = document.getElementById('chart-detail'); d.classList.remove('hidden'); d.innerHTML = `<div class="font-bold text-blue-800">${l.name}</div><div class="text-xs text-gray-600 mb-1">${l.maker} / ${l.color}</div><div class="text-xs font-mono bg-gray-100 p-1 inline-block rounded">L:${l.length}mm / W:${l.weight}g</div>${l.status && l.status !== '所持' ? `<div class="mt-1 text-xs text-red-500 font-bold">${l.status}</div>` : ''}`; } } } });
             }
             renderNotes(c) {
                 document.getElementById('header-actions').innerHTML = '';
-                c.innerHTML = `
-                    <div class="space-y-6 pb-20">
-                        <section class="bg-white p-4 rounded shadow">
-                            <h3 class="font-bold text-gray-700 mb-3 border-b pb-2 flex items-center"><i class="fa-solid fa-book-open mr-2 text-blue-500"></i>アプリの使い方</h3>
-                            <div class="text-sm text-gray-600 space-y-4">
-                                <div><span class="font-bold text-blue-800 block mb-1">1. ボックスを登録する</span><p>「ボックス」タブ右上の<span class="bg-blue-500 text-white text-[10px] px-1 rounded">＋</span>ボタンから、手持ちのルアーケースごとの写真を登録します。タグ（海、川など）を付けると後で探しやすくなります。</p></div>
-                                <div><span class="font-bold text-blue-800 block mb-1">2. ルアーを詳細登録する</span><p>登録したボックス詳細画面で「個別登録」を行います。一度詳細を入力すると、次回登録時に<span class="bg-green-100 text-green-800 text-[10px] px-1 rounded">コピー</span>ボタンでスペックを複製できるため、色違いの登録がスムーズです。</p></div>
-                                <div><span class="font-bold text-blue-800 block mb-1">3. 戦力を分析する</span><p>「分析」タブでルアーの分布図（重さ×長さ、深さ×重さなど）を確認できます。手持ちルアーの偏りや、足りないレンジが一目でわかります。</p></div>
-                                <div><span class="font-bold text-blue-800 block mb-1">4. マスタデータの編集（入力候補のカスタマイズ）</span><p>「設定」タブの下部にある「マスタ編集」で、メーカー名やルアータイプなどの選択肢を自由にカスタマイズできます。</p><p class="mt-1 text-xs text-gray-500">※ カンマ（,）区切りで入力して「更新」ボタンを押すと、登録時のプルダウンメニューやタグの候補として即座に反映されます。よく使うメーカーや独自のフィールド名を追加して、入力を効率化しましょう。</p></div>
-                                <div class="bg-red-50 p-2 rounded border border-red-200"><span class="font-bold text-red-600 block mb-1"><i class="fa-solid fa-circle-exclamation mr-1"></i>5. データのバックアップ（重要）</span><p class="text-red-600 font-bold text-xs mb-2">本アプリのデータはブラウザ内に保存されます。ブラウザの「閲覧履歴データの削除」や「キャッシュクリア」を行うと、登録したデータが全て消えてしまいます。</p><p class="text-gray-700 text-xs">万が一に備え、「設定」タブからこまめにデータの「書き出し」を行い、保存されたJSONファイルを大切に保管してください。機種変更の際もこのファイルを使って復元できます。</p></div>
-                            </div>
-                        </section>
-                        <section class="bg-red-50 p-4 rounded shadow border border-red-100">
-                            <h3 class="font-bold text-red-700 mb-3 border-b border-red-200 pb-2 flex items-center"><i class="fa-solid fa-triangle-exclamation mr-2"></i>釣りの注意点</h3>
-                            <ul class="text-sm text-gray-700 space-y-2 list-disc list-inside">
-                                <li><span class="font-bold">安全第一：</span>ライフジャケットを着用しましょう。足場の悪い場所ではスパイクシューズ等を装備してください。また、できるだけ知り合いと複数人で釣行へ向かいましょう。</li>
-                                <li><span class="font-bold">天候確認：</span>風速、波の高さ、潮位を事前に確認し、無理な釣行は控えましょう。新しいフィールドでは特に注意しましょう。雨で濡れると滑る足場もあります。</li>
-                                <li><span class="font-bold">マナーを守る：</span>ゴミは持ち帰りましょう。フック、ライン、鉛で命を落とす生物がたくさんいます。釣り禁止エリアや立ち入り禁止区域には入らないでください。</li>
-                                <li><span class="font-bold">フック事故：</span>ルアーが衣服や身体に刺さる事故に注意してください。帽子やアイウェア（偏光グラス）の着用を推奨します。釣り公園等では他の釣り人や子供連れの方へ注意しましょう。</li>
-                            </ul>
-                        </section>
-                        <section class="bg-teal-50 p-4 rounded shadow border border-teal-100">
-                            <h3 class="font-bold text-teal-700 mb-3 border-b border-teal-200 pb-2 flex items-center"><i class="fa-solid fa-hand-holding-heart mr-2"></i>魚と自然への配慮</h3>
-                            <div class="text-sm text-gray-700 space-y-4">
-                                <div><h4 class="font-bold text-teal-800 mb-1">🐟 希少な魚を守るために</h4><p class="mb-2 text-xs text-gray-600">数が減っている魚種については、長く釣りを楽しむためにも優しい対応を心がけましょう。</p><ul class="list-disc list-inside space-y-1 pl-1"><li><span class="font-bold">釣行回数やキープ数の調整：</span>狙う魚種を転換したり、リリースの割合を増やすなどして、個体数維持に協力しましょう。</li><li><span class="font-bold">ダメージの軽減：</span>バーブレスフック（カエシなし）の使用や、濡らした手で触れるなど、魚体への負担を減らしましょう。</li><li><span class="font-bold">繁殖期への配慮：</span>産卵期など、魚がデリケートな時期は釣りを控える、あるいは場所を変えるなどの配慮も大切です。</li></ul></div>
-                                <div><h4 class="font-bold text-teal-800 mb-1">🌿 外来種・生態系について</h4><p class="mb-2 text-xs text-gray-600">地域の生態系を守るため、適切な行動をお願いします。</p><ul class="list-disc list-inside space-y-1 pl-1"><li><span class="font-bold">持ち出し・放流の禁止：</span>生きたままの移動や、釣った場所とは違う場所への放流は法律で禁止されています。</li><li><span class="font-bold">リリースとキープ：</span>外来種の場合、生態系保護の観点からリリースせずにキープ（持ち帰り）することが推奨される場合があります。</li><li><span class="font-bold">情報の共有：</span>見慣れない魚が釣れた際は、リリースする前に写真を撮り、専門機関等へ報告・相談しましょう。</li></ul></div>
-                            </div>
-                        </section>
-                    </div>`;
+                c.innerHTML = `<div class="space-y-6 pb-20"><section class="bg-white p-4 rounded shadow"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2 flex items-center"><i class="fa-solid fa-book-open mr-2 text-blue-500"></i>アプリの使い方</h3><div class="text-sm text-gray-600 space-y-4"><div><span class="font-bold text-blue-800 block mb-1">1. ボックスを登録する</span><p>「ボックス」タブ右上の<span class="bg-blue-500 text-white text-[10px] px-1 rounded">＋</span>ボタンから、手持ちのルアーケースごとの写真を登録します。</p></div><div><span class="font-bold text-blue-800 block mb-1">2. ルアーを詳細登録する</span><p>登録したボックス詳細画面で「個別登録」を行います。一覧からルアーをタップして「編集」や「スペックをコピーして新規」が可能です。</p></div><div><span class="font-bold text-blue-800 block mb-1">3. 戦力を分析する</span><p>「分析」タブでルアーの分布図を確認できます。手持ちルアーの偏りや、足りないレンジが一目でわかります。</p></div><div><span class="font-bold text-blue-800 block mb-1">4. マスタデータの編集</span><p>「設定」タブで、メーカー名や選択肢をカスタマイズできます。</p></div><div class="bg-red-50 p-2 rounded border border-red-200"><span class="font-bold text-red-600 block mb-1"><i class="fa-solid fa-circle-exclamation mr-1"></i>5. データのバックアップ（重要）</span><p class="text-red-600 font-bold text-xs mb-2">ブラウザのキャッシュ削除でデータが消えます。こまめに「書き出し」を行ってください。</p></div></div></section><section class="bg-red-50 p-4 rounded shadow border border-red-100"><h3 class="font-bold text-red-700 mb-3 border-b border-red-200 pb-2 flex items-center"><i class="fa-solid fa-triangle-exclamation mr-2"></i>釣りの注意点</h3><ul class="text-sm text-gray-700 space-y-2 list-disc list-inside"><li><span class="font-bold">安全第一：</span>ライフジャケット着用。足場の悪い場所ではスパイクシューズ等を装備。複数人での釣行を推奨します。</li><li><span class="font-bold">天候確認：</span>風速、波、潮位を事前確認。新しいフィールドや雨天時は特に注意。</li><li><span class="font-bold">マナーを守る：</span>ゴミ持ち帰り。釣り禁止エリア厳守。根掛かりライン等は生物に害を与えます。</li><li><span class="font-bold">フック事故：</span>帽子・偏光グラス着用推奨。釣り公園等では周囲へ十分注意しましょう。</li></ul></section><section class="bg-teal-50 p-4 rounded shadow border border-teal-100"><h3 class="font-bold text-teal-700 mb-3 border-b border-teal-200 pb-2 flex items-center"><i class="fa-solid fa-hand-holding-heart mr-2"></i>魚と自然への配慮</h3><div class="text-sm text-gray-700 space-y-4"><div><h4 class="font-bold text-teal-800 mb-1">🐟 希少な魚を守るために</h4><ul class="list-disc list-inside space-y-1 pl-1"><li>キープ数の制限、リリースの徹底。</li><li>バーブレスフック使用、魚体へのダメージ軽減。</li></ul></div><div><h4 class="font-bold text-teal-800 mb-1">🌿 外来種・生態系について</h4><ul class="list-disc list-inside space-y-1 pl-1"><li>持ち出し・放流の禁止。</li><li>リリースの可否は地域のルールに従う。</li></ul></div></div></section></div>`;
             }
             renderSettings(c) {
-                document.getElementById('header-actions').innerHTML = '';
-                const m = this.db.data.master, s = this.db.data.settings;
-                c.innerHTML = `
-                    <div class="space-y-6 pb-20">
-                        <section class="bg-white p-4 rounded shadow"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-paintbrush mr-2"></i>表示設定</h3><div class="mb-4"><label class="block text-xs font-bold text-gray-600 mb-1">文字サイズ</label><div class="flex gap-2">${['small','medium','large'].map(v=>`<button onclick="ui.changeSetting('fontSize','${v}')" class="flex-1 py-2 rounded text-xs border ${s.fontSize===v?'bg-blue-600 text-white border-blue-600':'bg-gray-50 text-gray-600 border-gray-200'}">${v==='small'?'小':v==='medium'?'中':'大'}</button>`).join('')}</div></div><div class="mb-2"><label class="block text-xs font-bold text-gray-600 mb-1">背景色</label><div class="flex gap-2">${['#f3f4f6','#ffffff','#e0f2fe','#fff7ed'].map(x=>`<button onclick="ui.changeSetting('bgColor','${x}')" class="w-8 h-8 rounded-full border-2 ${s.bgColor===x?'border-blue-600 scale-110 shadow-md':'border-transparent'}" style="background-color:${x};"></button>`).join('')}</div></div></section>
-                        <section class="bg-white p-4 rounded shadow"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-database mr-2"></i>データ管理</h3><div class="grid grid-cols-2 gap-3"><button onclick="db.exportData()" class="bg-green-600 text-white py-2 rounded text-sm hover:bg-green-700"><i class="fa-solid fa-file-export mr-1"></i>書き出し</button><label class="bg-orange-500 text-white py-2 rounded text-center text-sm hover:bg-orange-600 cursor-pointer"><i class="fa-solid fa-file-import mr-1"></i>読み込み<input type="file" class="hidden" onchange="ui.handleImport(this)"></label></div></section>
-                        <section class="bg-white p-4 rounded shadow"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-list-check mr-2"></i>マスタ編集</h3><p class="text-[10px] text-gray-400 mb-2">※カンマ(,)区切りで入力してください</p>${this.renderMasterEditor('manufacturers','メーカー名',m.manufacturers)}${this.renderMasterEditor('types','ルアータイプ',m.types)}${this.renderMasterEditor('fields','フィールド',m.fields)}${this.renderMasterEditor('targets','対象魚',m.targets)}</section>
-                    </div>`;
+                document.getElementById('header-actions').innerHTML = ''; const m = this.db.data.master, s = this.db.data.settings;
+                c.innerHTML = `<div class="space-y-6 pb-20"><section class="bg-white p-4 rounded shadow"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-paintbrush mr-2"></i>表示設定</h3><div class="mb-4"><label class="block text-xs font-bold text-gray-600 mb-1">文字サイズ</label><div class="flex gap-2">${['small','medium','large'].map(v=>`<button onclick="ui.changeSetting('fontSize','${v}')" class="flex-1 py-2 rounded text-xs border ${s.fontSize===v?'bg-blue-600 text-white border-blue-600':'bg-gray-50 text-gray-600 border-gray-200'}">${v==='small'?'小':v==='medium'?'中':'大'}</button>`).join('')}</div></div><div class="mb-2"><label class="block text-xs font-bold text-gray-600 mb-1">背景色</label><div class="flex gap-2">${['#f3f4f6','#ffffff','#e0f2fe','#fff7ed'].map(x=>`<button onclick="ui.changeSetting('bgColor','${x}')" class="w-8 h-8 rounded-full border-2 ${s.bgColor===x?'border-blue-600 scale-110 shadow-md':'border-transparent'}" style="background-color:${x};"></button>`).join('')}</div></div></section><section class="bg-white p-4 rounded shadow"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-database mr-2"></i>データ管理</h3><div class="grid grid-cols-2 gap-3"><button onclick="db.exportData()" class="bg-green-600 text-white py-2 rounded text-sm hover:bg-green-700"><i class="fa-solid fa-file-export mr-1"></i>書き出し</button><label class="bg-orange-500 text-white py-2 rounded text-center text-sm hover:bg-orange-600 cursor-pointer"><i class="fa-solid fa-file-import mr-1"></i>読み込み<input type="file" class="hidden" onchange="ui.handleImport(this)"></label></div></section><section class="bg-white p-4 rounded shadow"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-list-check mr-2"></i>マスタ編集</h3><p class="text-[10px] text-gray-400 mb-2">※カンマ(,)区切りで入力してください</p>${this.renderMasterEditor('manufacturers','メーカー名',m.manufacturers)}${this.renderMasterEditor('types','ルアータイプ',m.types)}${this.renderMasterEditor('fields','フィールド',m.fields)}${this.renderMasterEditor('targets','対象魚',m.targets)}${this.renderMasterEditor('hooks','フックサイズ',m.hooks)}</section></div>`;
             }
             changeSetting(k, v) { this.db.updateSettings({[k]:v}); this.applyTheme(); this.renderSettings(document.getElementById('main-content')); }
             renderMasterEditor(k, t, l) { return `<div class="mb-4"><label class="block text-xs font-bold text-gray-600 mb-1">${t}</label><textarea id="master-${k}" class="w-full text-xs border rounded p-2 bg-gray-50" rows="3">${l.join(', ')}</textarea><button onclick="ui.saveMaster('${k}')" class="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-1 rounded mt-1">更新</button></div>`; }
-            saveMaster(k) { const v=document.getElementById(`master-${k}`).value; this.db.updateMaster(k,v.split(',').map(s=>s.trim()).filter(s=>s)); Utils.showToast(`${k}を更新しました`); }
-            handleImport(i) { const f=i.files[0]; if(!f)return; const r=new FileReader(); r.onload=e=>{ if(this.db.importData(e.target.result)){ alert('データを復元しました'); location.reload(); } }; r.readAsText(f); }
+            saveMaster(k) { const v = document.getElementById(`master-${k}`).value; this.db.updateMaster(k, v.split(',').map(s => s.trim()).filter(s => s)); Utils.showToast(`${k}を更新しました`); }
+            handleImport(i) { const f = i.files[0]; if(!f) return; const r = new FileReader(); r.onload=e => { if(this.db.importData(e.target.result)) { alert('データを復元しました'); location.reload(); } }; r.readAsText(f); }
             
-            // Modals
+            // --- Modals ---
             openBoxModal(bid=null) {
-                const m=this.db.data.master, isEdit=!!bid, box=isEdit?this.db.getBox(bid):{note:'',tags:[],image:null}, btags=box.tags||[];
-                const ctag=(t,items)=>`<div class="mb-3"><label class="block text-xs font-bold mb-1 text-gray-500">${t}</label><div class="flex flex-wrap gap-2">${items.map(x=>`<label class="inline-flex items-center"><input type="checkbox" value="${x}" class="hidden peer box-tag-input" ${btags.includes(x)?'checked':''}><span class="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full cursor-pointer peer-checked:bg-blue-500 peer-checked:text-white transition select-none">${x}</span></label>`).join('')}</div></div>`;
-                const c=`
-                    <div class="p-4"><h3 class="font-bold text-lg mb-4">${isEdit?'ボックス編集':'新しいボックス'}</h3>
-                    <div class="mb-4"><label class="block text-sm font-bold mb-1">写真</label><label class="block w-full h-32 border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 image-preview bg-center bg-cover bg-no-repeat" id="box-img-preview" style="${box.image?`background-image:url(${box.image})`:''}" data-base64="${box.image||''}">${!box.image?`<i class="fa-solid fa-camera text-2xl text-gray-400 mb-1"></i><span class="text-xs text-gray-400">タップして撮影/選択</span>`:''}<input type="file" accept="image/*" class="hidden" onchange="ui.handleImagePreview(this, 'box-img-preview')"></label></div>
-                    <div class="mb-4"><label class="block text-sm font-bold mb-1">メモ / タイトル</label><input type="text" id="box-note" class="w-full border rounded p-2" value="${box.note}"></div>
-                    <div class="mb-4 max-h-60 overflow-y-auto border-t border-b py-2">${ctag('ルアータイプ',m.types)}${ctag('浮力タイプ',m.sinkTypes)}${ctag('フィールド',m.fields)}${ctag('対象魚',m.targets)}</div>
-                    <div class="flex gap-2"><button onclick="ui.closeModal()" class="flex-1 bg-gray-200 text-gray-800 py-2 rounded">キャンセル</button><button onclick="ui.submitBox('${bid||''}')" class="flex-1 bg-blue-600 text-white py-2 rounded font-bold">${isEdit?'更新':'登録'}</button></div></div>`;
+                const m = this.db.data.master, isEdit = !!bid, box = isEdit ? this.db.getBox(bid) : { note: '', tags: [], image: null }, btags = box.tags || [];
+                const ctag = (t, items) => `<div class="mb-3"><label class="block text-xs font-bold mb-1 text-gray-500">${t}</label><div class="flex flex-wrap gap-2">${items.map(x => `<label class="inline-flex items-center"><input type="checkbox" value="${x}" class="hidden peer box-tag-input" ${btags.includes(x) ? 'checked' : ''}><span class="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full cursor-pointer peer-checked:bg-blue-500 peer-checked:text-white transition select-none">${x}</span></label>`).join('')}</div></div>`;
+                const c = `<div class="p-4"><h3 class="font-bold text-lg mb-4">${isEdit ? 'ボックス編集' : '新しいボックス'}</h3><div class="mb-4"><label class="block text-sm font-bold mb-1">写真</label><label class="block w-full h-32 border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 image-preview bg-center bg-cover bg-no-repeat" id="box-img-preview" style="${box.image ? `background-image:url(${box.image})` : ''}" data-base64="${box.image || ''}">${!box.image ? `<i class="fa-solid fa-camera text-2xl text-gray-400 mb-1"></i><span class="text-xs text-gray-400">タップして撮影/選択</span>` : ''}<input type="file" accept="image/*" class="hidden" onchange="ui.handleImagePreview(this, 'box-img-preview')"></label></div><div class="mb-4"><label class="block text-sm font-bold mb-1">メモ / タイトル</label><input type="text" id="box-note" class="w-full border rounded p-2" value="${box.note}"></div><div class="mb-4 max-h-60 overflow-y-auto border-t border-b py-2">${ctag('ルアータイプ', m.types)}${ctag('浮力タイプ', m.sinkTypes)}${ctag('フィールド', m.fields)}${ctag('対象魚', m.targets)}</div><div class="flex gap-2"><button onclick="ui.closeModal()" class="flex-1 bg-gray-200 text-gray-800 py-2 rounded">キャンセル</button><button onclick="ui.submitBox('${bid || ''}')" class="flex-1 bg-blue-600 text-white py-2 rounded font-bold">${isEdit ? '更新' : '登録'}</button></div></div>`;
                 this.showModal(c);
             }
-            async handleImagePreview(i, tid) { if(i.files&&i.files[0]) { const c=await Utils.compressImage(i.files[0]); const el=document.getElementById(tid); el.style.backgroundImage=`url(${c})`; el.dataset.base64=c; el.innerHTML=''; } }
+            async handleImagePreview(i, tid) { if (i.files && i.files[0]) { const c = await Utils.compressImage(i.files[0]); const el = document.getElementById(tid); el.style.backgroundImage = `url(${c})`; el.dataset.base64 = c; el.innerHTML = ''; } }
             submitBox(bid) {
-                const img=document.getElementById('box-img-preview').dataset.base64||null, note=document.getElementById('box-note').value, tags=Array.from(document.querySelectorAll('.box-tag-input:checked')).map(x=>x.value);
-                if(!img&&!note) { alert('写真かメモのどちらかは必須です'); return; }
-                if(bid) { const old=this.db.getBox(bid); this.db.updateBox({...old,image:img,note:note,tags:tags}); Utils.showToast('ボックスを更新しました'); }
-                else { this.db.addBox({id:Utils.uuid(),image:img,note:note,tags:tags,timestamp:Date.now()}); Utils.showToast('ボックスを作成しました'); }
-                this.closeModal(); bid?this.renderBoxDetail(document.getElementById('main-content'),bid):this.renderHome(document.getElementById('main-content'));
+                const img = document.getElementById('box-img-preview').dataset.base64 || null, note = document.getElementById('box-note').value, tags = Array.from(document.querySelectorAll('.box-tag-input:checked')).map(x => x.value);
+                if (!img && !note) { alert('写真かメモのどちらかは必須です'); return; }
+                if (bid) { const old = this.db.getBox(bid); this.db.updateBox({ ...old, image: img, note: note, tags: tags }); Utils.showToast('ボックスを更新しました'); }
+                else { this.db.addBox({ id: Utils.uuid(), image: img, note: note, tags: tags, timestamp: Date.now() }); Utils.showToast('ボックスを作成しました'); }
+                this.closeModal(); bid ? this.renderBoxDetail(document.getElementById('main-content'), bid) : this.renderHome(document.getElementById('main-content'));
             }
-            deleteBox(id) { if(confirm('このボックスと中のルアーデータを全て削除しますか？')){ this.db.deleteBox(id); router.navigate('home'); } }
-            
-            openAddLureModal(bid, copy=null) {
-                const m=this.db.data.master, last=!copy&&sessionStorage.getItem('last_lure')?JSON.parse(sessionStorage.getItem('last_lure')):null;
-                const l=copy||last||{name:'',maker:'',type:'',sinkType:'F (フローティング)',length:'',weight:'',depth:'',color:'',count:1,hookSize:'',status:'所持',purchaseDate:Utils.getTodayString()};
-                const c=`
-                    <div class="p-4"><h3 class="font-bold text-lg mb-4">ルアー詳細登録</h3>
-                    <div class="grid grid-cols-2 gap-3 mb-3"><div><label class="text-xs text-gray-500">メーカー</label><select id="lure-maker" class="w-full border p-1 rounded"><option value="">選択</option>${m.manufacturers.map(x=>`<option ${l.maker===x?'selected':''}>${x}</option>`).join('')}</select></div><div><label class="text-xs text-gray-500">商品名</label><input type="text" id="lure-name" class="w-full border p-1 rounded" value="${l.name}"></div></div>
-                    <div class="grid grid-cols-2 gap-3 mb-3"><div><label class="text-xs text-gray-500">タイプ</label><select id="lure-type" class="w-full border p-1 rounded">${m.types.map(x=>`<option ${l.type===x?'selected':''}>${x}</option>`).join('')}</select></div><div><label class="text-xs text-gray-500">浮力</label><select id="lure-sink" class="w-full border p-1 rounded">${m.sinkTypes.map(x=>`<option ${l.sinkType===x?'selected':''}>${x}</option>`).join('')}</select></div></div>
-                    <div class="grid grid-cols-3 gap-2 mb-3"><div><label class="text-xs text-gray-500">長さ(mm)</label><input type="number" inputmode="decimal" step="5" id="lure-len" class="w-full border p-1 rounded" value="${l.length}"></div><div><label class="text-xs text-gray-500">重さ(g)</label><input type="number" inputmode="decimal" id="lure-wgt" class="w-full border p-1 rounded" value="${l.weight}"></div><div><label class="text-xs text-gray-500">深度(m)</label><input type="number" inputmode="decimal" step="0.5" id="lure-dep" class="w-full border p-1 rounded" value="${l.depth}"></div></div>
-                    <div class="grid grid-cols-3 gap-2 mb-3"><div><label class="text-xs text-gray-500">フック</label><input type="text" id="lure-hook" class="w-full border p-1 rounded" placeholder="#6" value="${l.hookSize||''}"></div><div class="col-span-2"><label class="text-xs text-gray-500">状態</label><select id="lure-status" class="w-full border p-1 rounded"><option ${l.status==='所持'?'selected':''}>所持</option><option ${l.status==='ロスト'?'selected':''}>ロスト</option><option ${l.status==='購入予定'?'selected':''}>購入予定</option></select></div></div>
-                    <div class="grid grid-cols-2 gap-3 mb-4"><div><label class="text-xs text-gray-500">カラー</label><input type="text" id="lure-color" class="w-full border p-1 rounded" value="${l.color}"></div><div><label class="text-xs text-gray-500">購入日</label><input type="date" id="lure-date" class="w-full border p-1 rounded" value="${l.purchaseDate||Utils.getTodayString()}"></div></div>
-                    <div class="mb-4"><label class="text-xs text-gray-500">個数</label><input type="number" inputmode="numeric" id="lure-count" class="w-full border p-1 rounded" value="${l.count}"></div>
-                    <div class="flex gap-2"><button onclick="ui.closeModal()" class="flex-1 bg-gray-200 py-2 rounded">キャンセル</button><button onclick="ui.submitLure('${bid}')" class="flex-1 bg-blue-600 text-white py-2 rounded">登録</button></div></div>`;
+            deleteBox(id) { if (confirm('このボックスと中のルアーデータを全て削除しますか？')) { this.db.deleteBox(id); router.navigate('home'); } }
+
+            // 新規・コピー・編集に対応したフォーム
+            openLureForm(bid, copy = null, editLureId = null) {
+                const m = this.db.data.master;
+                const isEdit = !!editLureId;
+                let l;
+                if(isEdit) {
+                    l = this.db.data.lures.find(x => x.id === editLureId);
+                } else {
+                    const last = !copy && sessionStorage.getItem('last_lure') ? JSON.parse(sessionStorage.getItem('last_lure')) : null;
+                    l = copy || last || { name: '', maker: '', type: '', sinkType: 'F (フローティング)', length: '', weight: '', depth: '', sinkRate: '', color: '', count: 1, hookSize: '', status: '所持', purchaseDate: Utils.getTodayString() };
+                }
+                
+                const c = `
+                    <div class="p-4"><h3 class="font-bold text-lg mb-4">${isEdit ? 'ルアー情報編集' : 'ルアー詳細登録'}</h3>
+                    <div class="grid grid-cols-2 gap-3 mb-3"><div><label class="text-xs text-gray-500">メーカー</label><select id="lure-maker" class="w-full border p-1 rounded"><option value="">選択</option>${m.manufacturers.map(x => `<option ${l.maker === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div><div><label class="text-xs text-gray-500">商品名</label><input type="text" id="lure-name" class="w-full border p-1 rounded" value="${l.name}"></div></div>
+                    <div class="grid grid-cols-2 gap-3 mb-3"><div><label class="text-xs text-gray-500">タイプ</label><select id="lure-type" class="w-full border p-1 rounded">${m.types.map(x => `<option ${l.type === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div><div><label class="text-xs text-gray-500">浮力</label><select id="lure-sink" class="w-full border p-1 rounded" onchange="ui.toggleDepthInputs()">${m.sinkTypes.map(x => `<option ${l.sinkType === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div></div>
+                    <div class="grid grid-cols-3 gap-2 mb-3">
+                        <div><label class="text-xs text-gray-500">長さ(mm)</label><input type="number" inputmode="decimal" step="5" min="0" id="lure-len" class="w-full border p-1 rounded" value="${l.length}"></div>
+                        <div><label class="text-xs text-gray-500">重さ(g)</label><input type="number" inputmode="decimal" step="0.1" min="0" id="lure-wgt" class="w-full border p-1 rounded" value="${l.weight}"></div>
+                        <div id="input-group-depth"><label class="text-xs text-gray-500">潜行深度(m)</label><input type="number" inputmode="decimal" step="0.5" min="0" id="lure-dep" class="w-full border p-1 rounded" value="${l.depth || ''}"></div>
+                        <div id="input-group-sinkrate" style="display:none;"><label class="text-xs text-gray-500">沈降速度(m/s)</label><input type="number" inputmode="decimal" step="0.1" min="0" id="lure-sink-rate" class="w-full border p-1 rounded" value="${l.sinkRate || ''}"></div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 mb-3"><div><label class="text-xs text-gray-500">フック</label><select id="lure-hook" class="w-full border p-1 rounded"><option value="">選択</option>${(m.hooks || []).map(h => `<option ${l.hookSize === h ? 'selected' : ''}>${h}</option>`).join('')}</select></div><div class="col-span-2"><label class="text-xs text-gray-500">状態</label><select id="lure-status" class="w-full border p-1 rounded"><option ${l.status === '所持' ? 'selected' : ''}>所持</option><option ${l.status === 'ロスト' ? 'selected' : ''}>ロスト</option><option ${l.status === '購入予定' ? 'selected' : ''}>購入予定</option></select></div></div>
+                    <div class="grid grid-cols-2 gap-3 mb-4"><div><label class="text-xs text-gray-500">カラー</label><input type="text" id="lure-color" class="w-full border p-1 rounded" value="${l.color}"></div><div><label class="text-xs text-gray-500">購入日</label><input type="date" id="lure-date" class="w-full border p-1 rounded" value="${l.purchaseDate || Utils.getTodayString()}"></div></div>
+                    <div class="mb-4"><label class="text-xs text-gray-500">個数</label><input type="number" inputmode="numeric" min="0" id="lure-count" class="w-full border p-1 rounded" value="${l.count}"></div>
+                    <div class="flex gap-2"><button onclick="ui.closeModal()" class="flex-1 bg-gray-200 py-2 rounded">キャンセル</button><button onclick="ui.submitLure('${bid}', '${editLureId || ''}')" class="flex-1 bg-blue-600 text-white py-2 rounded">${isEdit ? '更新' : '登録'}</button></div></div>`;
+                this.showModal(c);
+                this.toggleDepthInputs(); // 初期表示の状態セット
+            }
+
+            toggleDepthInputs() {
+                const val = document.getElementById('lure-sink').value;
+                const isSink = val.includes('S') || val.includes('HS'); // S, HS
+                const isFloat = val.includes('F') || val.includes('SP'); // F, SP
+                // 簡易判定: Sを含むなら沈降速度、それ以外(F, SP)は潜行深度
+                // マスタ: F, S, SP, HS
+                // S, HS -> 沈降速度
+                // F, SP -> 潜行深度
+                if (val.includes('S') && !val.includes('SP')) { // S, HS
+                     document.getElementById('input-group-depth').style.display = 'none';
+                     document.getElementById('input-group-sinkrate').style.display = 'block';
+                } else { // F, SP
+                     document.getElementById('input-group-depth').style.display = 'block';
+                     document.getElementById('input-group-sinkrate').style.display = 'none';
+                }
+            }
+
+            submitLure(bid, editId) {
+                const l = {
+                    id: editId || Utils.uuid(), boxId: bid,
+                    maker: document.getElementById('lure-maker').value,
+                    name: document.getElementById('lure-name').value,
+                    type: document.getElementById('lure-type').value,
+                    sinkType: document.getElementById('lure-sink').value,
+                    length: document.getElementById('lure-len').value,
+                    weight: document.getElementById('lure-wgt').value,
+                    depth: document.getElementById('lure-dep').value,
+                    sinkRate: document.getElementById('lure-sink-rate').value,
+                    color: document.getElementById('lure-color').value,
+                    count: document.getElementById('lure-count').value,
+                    hookSize: document.getElementById('lure-hook').value,
+                    status: document.getElementById('lure-status').value,
+                    purchaseDate: document.getElementById('lure-date').value
+                };
+                if(editId) {
+                    this.db.updateLure(l);
+                    Utils.showToast('ルアー情報を更新しました');
+                } else {
+                    sessionStorage.setItem('last_lure', JSON.stringify(l));
+                    this.db.addLure(l);
+                    Utils.showToast('ルアーを登録しました');
+                }
+                this.closeModal(); this.renderBoxDetail(document.getElementById('main-content'), bid);
+            }
+
+            openLureDetail(lid) {
+                const l = this.db.data.lures.find(x => x.id === lid);
+                const isSink = l.sinkType && (l.sinkType.includes('S') || l.sinkType.includes('HS'));
+                const depthInfo = isSink ? `沈降: ${l.sinkRate || '-'} m/s` : `深度: ${l.depth || '-'} m`;
+                
+                const c = `<div class="p-4 text-center">
+                    <h3 class="font-bold mb-1 text-lg">${l.name}</h3>
+                    <p class="text-sm text-gray-600 mb-2">${l.maker} / ${l.type}</p>
+                    <div class="bg-gray-50 rounded p-2 mb-4 text-sm grid grid-cols-2 gap-2 text-left">
+                        <span>タイプ: ${l.sinkType}</span>
+                        <span>カラー: ${l.color}</span>
+                        <span>長さ: ${l.length}mm</span>
+                        <span>重さ: ${l.weight}g</span>
+                        <span>${depthInfo}</span>
+                        <span>フック: ${l.hookSize}</span>
+                        <span>状態: ${l.status}</span>
+                        <span>購入: ${l.purchaseDate}</span>
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <button onclick="ui.closeModal(); setTimeout(()=>ui.openLureForm('${l.boxId}', null, '${l.id}'), 200)" class="bg-green-600 text-white py-2 rounded font-bold"><i class="fa-solid fa-pen mr-1"></i>編集する</button>
+                        <button onclick="ui.copyAndAdd('${lid}')" class="bg-blue-100 text-blue-800 py-2 rounded">スペックをコピーして新規</button>
+                        <button onclick="ui.deleteLure('${lid}','${l.boxId}')" class="bg-red-100 text-red-600 py-2 rounded">削除</button>
+                        <button onclick="ui.closeModal()" class="text-gray-500 mt-2">閉じる</button>
+                    </div></div>`;
                 this.showModal(c);
             }
-            submitLure(bid) {
-                const l={id:Utils.uuid(),boxId:bid,maker:document.getElementById('lure-maker').value,name:document.getElementById('lure-name').value,type:document.getElementById('lure-type').value,sinkType:document.getElementById('lure-sink').value,length:document.getElementById('lure-len').value,weight:document.getElementById('lure-wgt').value,depth:document.getElementById('lure-dep').value,color:document.getElementById('lure-color').value,count:document.getElementById('lure-count').value,hookSize:document.getElementById('lure-hook').value,status:document.getElementById('lure-status').value,purchaseDate:document.getElementById('lure-date').value};
-                sessionStorage.setItem('last_lure',JSON.stringify(l)); this.db.addLure(l); this.closeModal(); this.renderBoxDetail(document.getElementById('main-content'),bid);
-            }
-            openEditLureModal(lid) {
-                const l=this.db.data.lures.find(x=>x.id===lid);
-                const c=`<div class="p-4 text-center"><h3 class="font-bold mb-1">${l.name}</h3><div class="text-xs text-gray-500 mb-4">購入日: ${l.purchaseDate||'-'} / フック: ${l.hookSize||'未登録'}</div><div class="flex flex-col gap-2"><button onclick="ui.copyAndAdd('${lid}')" class="bg-blue-100 text-blue-800 py-2 rounded">スペックをコピーして新規</button><button onclick="ui.deleteLure('${lid}','${l.boxId}')" class="bg-red-100 text-red-600 py-2 rounded">削除</button><button onclick="ui.closeModal()" class="text-gray-500 mt-2">閉じる</button></div></div>`;
-                this.showModal(c);
-            }
-            deleteLure(id, bid) { if(confirm('削除しますか？')){ this.db.deleteLure(id); this.closeModal(); this.renderBoxDetail(document.getElementById('main-content'),bid); } }
-            copyAndAdd(id) { const l=this.db.data.lures.find(x=>x.id===id); this.closeModal(); setTimeout(()=>this.openAddLureModal(l.boxId,l),200); }
-            showModal(h) { const c=document.getElementById('modal-container'); c.innerHTML=h; document.getElementById('modal-overlay').classList.remove('hidden'); c.classList.add('modal-enter'); setTimeout(()=>c.classList.add('modal-enter-active'),10); }
-            closeModal() { const c=document.getElementById('modal-container'); c.classList.remove('modal-enter-active'); c.classList.add('modal-exit-active'); setTimeout(()=>{ document.getElementById('modal-overlay').classList.add('hidden'); c.classList.remove('modal-exit-active'); c.innerHTML=''; },200); }
+            deleteLure(id, bid) { if (confirm('削除しますか？')) { this.db.deleteLure(id); this.closeModal(); this.renderBoxDetail(document.getElementById('main-content'), bid); } }
+            copyAndAdd(id) { const l = this.db.data.lures.find(x => x.id === id); this.closeModal(); setTimeout(() => this.openLureForm(l.boxId, l), 200); }
+            showModal(h) { const c = document.getElementById('modal-container'); c.innerHTML = h; document.getElementById('modal-overlay').classList.remove('hidden'); c.classList.add('modal-enter'); setTimeout(() => c.classList.add('modal-enter-active'), 10); }
+            closeModal() { const c = document.getElementById('modal-container'); c.classList.remove('modal-enter-active'); c.classList.add('modal-exit-active'); setTimeout(() => { document.getElementById('modal-overlay').classList.add('hidden'); c.classList.remove('modal-exit-active'); c.innerHTML = ''; }, 200); }
         }
 
         const db = new DataManager();
