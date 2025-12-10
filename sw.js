@@ -1,6 +1,6 @@
-const CACHE_NAME = 'lure-hangar-v2'; // バージョン管理用。ファイルを更新したらここも変えると良い
+const CACHE_NAME = 'lure-hangar-v3.1';
 const ASSETS = [
-  './lure_manager.html',
+  './index.html', // index.htmlにする場合はここを変更
   './manifest.json',
   './favicon.png',
   './icon-512.png',
@@ -9,11 +9,8 @@ const ASSETS = [
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css'
 ];
 
-// インストール処理
 self.addEventListener('install', (event) => {
-  // 待機せずにすぐに有効化させる
   self.skipWaiting();
-  
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
@@ -23,13 +20,11 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// 有効化後の処理（古いキャッシュの削除）
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          // 現在のバージョン以外のキャッシュを削除
           if (cacheName !== CACHE_NAME) {
             console.log('[Service Worker] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
@@ -38,25 +33,15 @@ self.addEventListener('activate', (event) => {
       );
     })
   );
-  // 全てのクライアント（タブ）のコントロールを即座に開始
   return self.clients.claim();
 });
 
-// 通信発生時の処理
 self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request)
       .then((response) => {
-        // 1. キャッシュにあればそれを返す（高速・オフライン対応）
-        if (response) {
-          return response;
-        }
-        
-        // 2. キャッシュになければネットワークに取りに行く
-        return fetch(event.request).catch((error) => {
+        return response || fetch(event.request).catch((error) => {
           console.error('[Service Worker] Fetch failed:', error);
-          // ここでオフライン用の代替画像を返したりもできるが、
-          // 今回は基本アセットを全てキャッシュしているのでエラーのままとする
           throw error;
         });
       })
