@@ -144,13 +144,20 @@
         }
 
         class UIManager {
-            constructor(db) { this.db = db; this.chartInstance = null; this.analysisMode = 'spec'; this.analysisFilterTag = 'all'; this.applyTheme(); }
+            constructor(db) { 
+                this.db = db; 
+                this.chartInstance = null; 
+                this.analysisMode = 'spec'; 
+                this.analysisFilterTag = 'all';
+                this.analysisFishTarget = 'all'; // 選択された魚種を保存
+                this.applyTheme(); 
+            }
             applyTheme() {
                 const s = this.db.data.settings; const r = document.documentElement; r.style.setProperty('--app-bg-color', s.bgColor);
                 let scale = '100%'; 
                 if (s.fontSize === 'small') scale = '85%'; 
                 if (s.fontSize === 'large') scale = '115%';
-                if (s.fontSize === 'x-small') scale = '75%'; // 極小追加
+                if (s.fontSize === 'x-small') scale = '75%';
                 r.style.setProperty('--app-font-scale', scale);
             }
             renderHome(c) {
@@ -172,7 +179,6 @@
             }
             renderBoxDetail(c, bid) {
                 const b = this.db.getBox(bid); if (!b) return router.navigate('home');
-                // 戻るボタンを右寄せ（mr-auto削除、justify-end）
                 document.getElementById('header-actions').innerHTML = `
                     <div class="w-full flex justify-end items-center gap-2">
                         <button onclick="router.navigate('home')" class="bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded text-xs transition flex items-center gap-1 border border-white/20"><i class="fa-solid fa-arrow-left"></i> 戻る</button>
@@ -202,7 +208,7 @@
                             <button onclick="ui.openLureForm('${bid}')" class="bg-blue-600 text-white text-xs px-3 py-2 rounded shadow hover:bg-blue-700"><i class="fa-solid fa-plus mr-1"></i>追加</button>
                         </div>
                     </div>
-                    <div class="space-y-3 pb-24">
+                    <div class="space-y-2 pb-24">
                         ${ls.map(l => {
                             const isLost = l.status === 'ロスト';
                             const depthLabel = (l.sinkType && (l.sinkType.includes('S') || l.sinkType.includes('HS'))) ? (l.sinkRate ? `${l.sinkRate}m/s` : '') : (l.depth ? `${l.depth}m` : '');
@@ -211,13 +217,13 @@
                             else if (l.rank === '2軍') borderClass = 'border-gray-400';
                             else if (l.rank === '3軍') borderClass = 'border-orange-700';
 
-                            return `<div class="bg-white p-3 rounded shadow-sm border-l-4 ${isLost ? 'border-gray-400 bg-gray-50 opacity-70' : borderClass} flex justify-between items-center" onclick="ui.openLureDetail('${l.id}')">
+                            return `<div class="bg-white px-3 py-2 rounded shadow-sm border-l-4 ${isLost ? 'border-gray-400 bg-gray-50 opacity-70' : borderClass} flex justify-between items-center" onclick="ui.openLureDetail('${l.id}')">
                                 <div>
-                                    <div class="text-xs text-gray-500 flex gap-2"><span>${l.maker}</span>${l.status && l.status !== '所持' ? `<span class="bg-gray-200 px-1 rounded text-[10px]">${l.status}</span>` : ''}</div>
-                                    <div class="font-bold text-sm ${isLost ? 'line-through text-gray-500' : ''}">${l.name}${l.achievements ? '<i class="fa-solid fa-star text-yellow-500 ml-1"></i>' : ''}</div>
-                                    <div class="text-xs mt-1 text-gray-600 space-x-2"><span class="bg-gray-100 px-1 rounded">${l.type}</span><span>${l.length}mm</span><span>${l.weight}g</span>${depthLabel ? `<span>${depthLabel}</span>` : ''}${l.hookSize ? `<span class="text-xs border border-gray-300 px-1 rounded">#${l.hookSize}</span>` : ''}</div>
+                                    <div class="text-[10px] text-gray-500 flex gap-2 leading-tight"><span>${l.maker}</span>${l.status && l.status !== '所持' ? `<span class="bg-gray-200 px-1 rounded text-[10px]">${l.status}</span>` : ''}</div>
+                                    <div class="font-bold text-xs ${isLost ? 'line-through text-gray-500' : ''} leading-tight my-0.5">${l.name}${l.achievements ? '<i class="fa-solid fa-star text-yellow-500 ml-1 text-[10px]"></i>' : ''}</div>
+                                    <div class="text-[10px] text-gray-600 space-x-1 leading-tight"><span class="bg-gray-100 px-1 rounded">${l.type}</span><span>${l.length}mm</span><span>${l.weight}g</span>${depthLabel ? `<span>${depthLabel}</span>` : ''}${l.hookSize ? `<span class="border border-gray-300 px-1 rounded">#${l.hookSize}</span>` : ''}</div>
                                 </div>
-                                <div class="text-right"><div class="text-xs font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded mb-1 inline-block">${Utils.simplifyType(l.sinkType)}</div><div class="text-xs text-gray-400">×${l.count}</div></div>
+                                <div class="text-right ml-2 shrink-0"><div class="text-[10px] font-bold bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded mb-0.5 inline-block">${Utils.simplifyType(l.sinkType)}</div><div class="text-[10px] text-gray-400">×${l.count}</div></div>
                             </div>`
                         }).join('')}
                     </div>`;
@@ -229,6 +235,15 @@
                 const allLures = this.db.getAllLures();
                 const totalCount = allLures.reduce((sum, l) => sum + (Number(l.count) || 0), 0);
                 const typeCount = allLures.length;
+
+                // 実績のある魚種を収集
+                const achievementFishSet = new Set();
+                allLures.forEach(l => {
+                    if (l.achievements) {
+                        l.achievements.split(/[,、\s]+/).filter(s=>s.trim()).forEach(f => achievementFishSet.add(f.trim()));
+                    }
+                });
+                const sortedFish = Array.from(achievementFishSet).sort();
 
                 c.innerHTML = `
                     <div class="space-y-4 pb-20">
@@ -244,7 +259,7 @@
                                 <select id="chart-mode" class="text-xs border rounded bg-gray-50 p-1" onchange="ui.changeChartMode(this.value)">
                                     <option value="spec" ${this.analysisMode === 'spec' ? 'selected' : ''}>スペック分布(散布図)</option>
                                     <option value="type" ${this.analysisMode === 'type' ? 'selected' : ''}>種類別構成(棒)</option>
-                                    <option value="rank" ${this.analysisMode === 'rank' ? 'selected' : ''}>ランク割合(円)</option>
+                                    <option value="rank" ${this.analysisMode === 'rank' ? 'selected' : ''}>ランク割合(棒)</option>
                                     <option value="achieve" ${this.analysisMode === 'achieve' ? 'selected' : ''}>釣果実績(円)</option>
                                 </select>
                             </h3>
@@ -254,6 +269,15 @@
                             <div id="chart-controls-spec" class="flex gap-2 mb-4 text-sm ${this.analysisMode !== 'spec' ? 'hidden' : ''}">
                                 <div class="flex-1"><label class="block text-xs text-gray-500 mb-1">X軸</label><select id="chart-x" class="w-full bg-gray-50 border rounded p-1" onchange="ui.updateChart()"><option value="length" selected>長さ (mm)</option><option value="weight">重さ (g)</option><option value="depth">潜行深度 (m)</option><option value="sinkRate">沈降速度 (m/s)</option></select></div>
                                 <div class="flex-1"><label class="block text-xs text-gray-500 mb-1">Y軸</label><select id="chart-y" class="w-full bg-gray-50 border rounded p-1" onchange="ui.updateChart()"><option value="length">長さ (mm)</option><option value="weight" selected>重さ (g)</option><option value="depth">潜行深度 (m)</option><option value="sinkRate">沈降速度 (m/s)</option></select></div>
+                            </div>
+
+                            <!-- Achieve Chart Controls -->
+                            <div id="chart-controls-achieve" class="mb-4 text-sm ${this.analysisMode !== 'achieve' ? 'hidden' : ''}">
+                                <label class="block text-xs text-gray-500 mb-1">分析対象の魚種</label>
+                                <select id="chart-achieve-fish" class="w-full bg-yellow-50 border border-yellow-200 rounded p-2 text-yellow-900 font-bold" onchange="ui.updateChart()">
+                                    <option value="all" ${this.analysisFishTarget === 'all' ? 'selected' : ''}>すべて（魚種内訳）</option>
+                                    ${sortedFish.map(f => `<option value="${f}" ${this.analysisFishTarget === f ? 'selected' : ''}>${f}</option>`).join('')}
+                                </select>
                             </div>
                             
                             <div class="relative w-full h-64"><canvas id="mainChart"></canvas></div>
@@ -266,6 +290,10 @@
             
             updateChart() {
                 this.analysisFilterTag = document.getElementById('chart-filter').value;
+                if(this.analysisMode === 'achieve') {
+                    this.analysisFishTarget = document.getElementById('chart-achieve-fish').value;
+                }
+
                 const ctx = document.getElementById('mainChart').getContext('2d');
                 if (this.chartInstance) this.chartInstance.destroy();
 
@@ -299,30 +327,60 @@
                     }));
                     this.chartInstance = new Chart(ctx, { type: 'bar', data: { labels: allTypes, datasets: barDatasets }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true } } } });
                 } else if (this.analysisMode === 'rank') {
-                    // ランク割合（円グラフ）
+                    // ランク割合（ルアー種類ごとの積み上げ棒グラフ）
+                    const masterTypes = this.db.data.master.types;
+                    const dataTypes = [...new Set(ls.map(l => l.type || '未設定'))];
+                    const allTypes = [...new Set([...masterTypes, ...dataTypes])].filter(t => dataTypes.includes(t));
                     const ranks = ['1軍', '2軍', '3軍', '指定なし'];
-                    const data = ranks.map(r => ls.filter(l => (l.rank || '指定なし') === r).reduce((sum, l) => sum + (Number(l.count) || 1), 0));
-                    this.chartInstance = new Chart(ctx, {
-                        type: 'doughnut',
-                        data: { labels: ranks, datasets: [{ data: data, backgroundColor: ['#eab308', '#9ca3af', '#c2410c', '#f3f4f6'] }] },
-                        options: { responsive: true, maintainAspectRatio: false }
+                    const rankColors = {'1軍': '#eab308', '2軍': '#9ca3af', '3軍': '#c2410c', '指定なし': '#f3f4f6'};
+                    
+                    const datasets = ranks.map(rank => ({
+                        label: rank,
+                        data: allTypes.map(type => ls.filter(l => (l.type || '未設定') === type && (l.rank || '指定なし') === rank).reduce((sum, l) => sum + (Number(l.count) || 1), 0)),
+                        backgroundColor: rankColors[rank]
+                    }));
+
+                    this.chartInstance = new Chart(ctx, { 
+                        type: 'bar', 
+                        data: { labels: allTypes, datasets: datasets }, 
+                        options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true } } } 
                     });
                 } else if (this.analysisMode === 'achieve') {
                     // 釣果実績（円グラフ）
-                    const counts = {};
-                    ls.forEach(l => {
-                        if (!l.achievements) return;
-                        l.achievements.split(/[,、\s]+/).filter(s => s.trim()).forEach(fish => { counts[fish] = (counts[fish] || 0) + 1; });
-                    });
-                    const labels = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
-                    const data = labels.map(k => counts[k]);
-                    // 配色を自動生成
-                    const bgColors = labels.map((_, i) => `hsl(${i * 360 / (labels.length || 1)}, 70%, 60%)`);
-                    
-                    if (labels.length === 0) {
-                        this.chartInstance = new Chart(ctx, { type: 'doughnut', data: { labels: ['データなし'], datasets: [{ data: [1], backgroundColor: ['#eee'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: '実績データがありません' } } } });
+                    if (this.analysisFishTarget === 'all') {
+                        // 全体（魚種内訳）
+                        const counts = {};
+                        ls.forEach(l => {
+                            if (!l.achievements) return;
+                            l.achievements.split(/[,、\s]+/).filter(s => s.trim()).forEach(fish => { counts[fish] = (counts[fish] || 0) + 1; });
+                        });
+                        const labels = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+                        const data = labels.map(k => counts[k]);
+                        const bgColors = labels.map((_, i) => `hsl(${i * 360 / (labels.length || 1)}, 70%, 60%)`);
+                        
+                        if (labels.length === 0) {
+                            this.chartInstance = new Chart(ctx, { type: 'doughnut', data: { labels: ['データなし'], datasets: [{ data: [1], backgroundColor: ['#eee'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: '実績データがありません' } } } });
+                        } else {
+                            this.chartInstance = new Chart(ctx, { type: 'doughnut', data: { labels, datasets: [{ data, backgroundColor: bgColors }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'よく釣れる魚種' } } } });
+                        }
                     } else {
-                        this.chartInstance = new Chart(ctx, { type: 'doughnut', data: { labels, datasets: [{ data, backgroundColor: bgColors }] }, options: { responsive: true, maintainAspectRatio: false } });
+                        // 特定の魚種（ルアー種類内訳）
+                        const targetFish = this.analysisFishTarget;
+                        const filteredLures = ls.filter(l => l.achievements && l.achievements.includes(targetFish));
+                        const typeCounts = {};
+                        filteredLures.forEach(l => {
+                            const type = l.type || '未設定';
+                            typeCounts[type] = (typeCounts[type] || 0) + 1;
+                        });
+                        const labels = Object.keys(typeCounts).sort((a, b) => typeCounts[b] - typeCounts[a]);
+                        const data = labels.map(k => typeCounts[k]);
+                        const bgColors = labels.map((_, i) => `hsl(${i * 360 / (labels.length || 1)}, 70%, 60%)`);
+
+                        if (labels.length === 0) {
+                            this.chartInstance = new Chart(ctx, { type: 'doughnut', data: { labels: ['データなし'], datasets: [{ data: [1], backgroundColor: ['#eee'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: '該当するルアーがありません' } } } });
+                        } else {
+                            this.chartInstance = new Chart(ctx, { type: 'doughnut', data: { labels, datasets: [{ data, backgroundColor: bgColors }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: `${targetFish}が釣れたルアー` } } } });
+                        }
                     }
                 }
             }
