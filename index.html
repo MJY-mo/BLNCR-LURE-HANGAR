@@ -1,1516 +1,368 @@
-// ============================================================================
-// app.js - 狩猟アプリ 統合JavaScriptファイル (完全版)
-// ============================================================================
-
-// ----------------------------------------------------------------------------
-// 1. データベース定義
-// ----------------------------------------------------------------------------
-const db = new Dexie('HuntingAppDB');
-
-// スキーマ定義 (最新版 v14)
-db.version(14).stores({
-    trap: '++id, trap_number, type, setup_date, latitude, longitude, memo, image_blob, is_open, close_date, purpose, [is_open+trap_number], [is_open+setup_date], [is_open+close_date]',
-    trap_type: '++id, &name',
-    catch_records: '++id, trap_id, gun_log_id, catch_date, species_name, gender, age, memo, image_blob, latitude, longitude, [gender+catch_date], [age+catch_date], [trap_id+catch_date], [gun_log_id+catch_date], [gender+species_name], [age+species_name], [trap_id+species_name], [gun_log_id+species_name]',
-    gun: '++id, &name, type, caliber',
-    gun_log: '++id, use_date, gun_id, purpose, location, memo, image_blob, latitude, longitude, ammo_count, companion, [gun_id+use_date], [purpose+use_date]',
-    ammo_purchases: '++id, gun_id, purchase_date',
-    game_animal_list: '++id, species_name, category, is_game_animal, ecology, damage, image_1, image_2, [category+species_name], [is_game_animal+species_name]',
-    checklist_sets: '++id, &name',
-    checklist_items: '++id, list_id, name, is_checked, &[list_id+name]',
-    profile_images: '++id, type',
-    settings: '&key',
-    hunter_profile: '&key'
-});
-console.log("Database schema defined (app.js integrated)");
-
-
-// ----------------------------------------------------------------------------
-// 2. メインロジック & 共通関数
-// ----------------------------------------------------------------------------
-
-// グローバル変数・DOM要素
-const app = document.getElementById('app');
-const headerTitle = document.getElementById('headerTitle');
-const backButton = document.getElementById('backButton');
-const headerActions = document.getElementById('headerActions');
-
-const tabs = {
-    trap: document.getElementById('tab-trap'),
-    gun: document.getElementById('tab-gun'),
-    catch: document.getElementById('tab-catch'),
-    checklist: document.getElementById('tab-checklist'),
-    info: document.getElementById('tab-info'),
-    settings: document.getElementById('tab-settings'),
-};
-
-// アプリケーションの状態管理
-const appState = {
-    currentPage: 'trap',
-    currentTrapId: null,
-    currentGunLogId: null,
-    currentCatchMethod: 'all',
-    currentCatchRelationId: null,
-    trapView: 'open',
-    trapFilters: { type: 'all' },
-    trapSortOpen: { key: 'trap_number', order: 'asc' },
-    trapSortClosed: { key: 'close_date', order: 'desc' },
-    gunLogFilters: { purpose: 'all', gun_id: 'all' },
-    gunLogSort: { key: 'use_date', order: 'desc' },
-    catchFilters: { method: 'all', species: '', gender: 'all', age: 'all' },
-    catchSort: { key: 'catch_date', order: 'desc' },
-    gameAnimalFilters: { category: 'all', status: 'all' },
-    infoSort: 'default',
-    infoFilterAttribute: 'all',
-    activeBlobUrls: [],
-    isEditing: false
-};
-
-// --- アプリ初期化 ---
-window.addEventListener('load', () => {
-    console.log("Window loaded. Initializing app...");
-    db.open().then(async () => {
-        console.log("Database opened successfully.");
-        await loadAndApplySettings();
-        await populateDefaultTrapTypes();
-        await populateDefaultHunterProfile();
-        await populateGameAnimalListIfNeeded(false);
-        setupTabs();
-        navigateTo('trap', showTrapPage, '罠');
-    }).catch(err => {
-        console.error("Failed to open database:", err);
-        app.innerHTML = `<div class="error-box">データベースの起動に失敗しました。アプリが使用できません。</div>`;
-    });
-});
-
-// 初期データ投入関数
-async function populateDefaultTrapTypes() {
-    try { await db.trap_type.bulkAdd([{ name: 'くくり罠' }, { name: '箱罠' }]); } catch (err) { /* ignore */ }
-}
-async function populateDefaultHunterProfile() {
-    try { await db.hunter_profile.add({ key: 'main', name: '', gun_license_renewal: '', hunting_license_renewal: '', registration_renewal: '', explosives_permit_renewal: '' }); } catch (err) { /* ignore */ }
-}
-
-// CSV読み込み (最新版: 生態・被害対応)
-async function populateGameAnimalListIfNeeded(forceUpdate = false) {
-    try {
-        const count = await db.game_animal_list.count();
-        if (count > 0 && !forceUpdate) {
-            console.log(`Game animal list is already populated (${count} items). Skipping.`);
-            return;
-        }
-        console.log(forceUpdate ? "Forcing update..." : "Populating from GitHub...");
-        const CSV_URL = 'https://raw.githubusercontent.com/MJY-mo/hunting-memo/refs/heads/main/%E7%8B%A9%E7%8C%9F%E9%B3%A5%E7%8D%A3.csv'; 
-        const fetchUrl = `${CSV_URL}?t=${Date.now()}`;
-        const response = await fetch(fetchUrl);
-        if (!response.ok) throw new Error(`Failed to fetch CSV: ${response.statusText}`);
-        const csvText = await response.text();
-        const records = parseCSV(csvText);
-        if (records.length < 1) throw new Error('CSVデータが空か、正しい形式ではありません。');
-
-        let startIndex = 0;
-        if (records[0][0] && records[0][0].includes('分類')) startIndex = 1;
-        
-        const animals = [];
-        for (let i = startIndex; i < records.length; i++) {
-            const row = records[i];
-            if (row.length < 3) continue;
-            const animal = {
-                category: row[0] || '', is_game_animal: row[1] || '', species_name: row[2] || '',
-                method_gun: row[3] || '', method_trap: row[4] || '', method_net: row[5] || '',
-                gender: row[6] || '', count: row[7] || '', prohibited_area: row[8] || '',
-                habitat: row[9] || '', notes: row[10] || '',
-                ecology: row[11] || '', damage: row[12] || '',
-                image_1: row[13] || '', image_2: row[14] || ''
-            };
-            animals.push(animal);
-        }
-        if (animals.length === 0) throw new Error('有効なデータが見つかりませんでした。');
-
-        await db.transaction('rw', db.game_animal_list, async () => {
-            await db.game_animal_list.clear();
-            await db.game_animal_list.bulkAdd(animals);
-        });
-        console.log(`Game animal list populated successfully (${animals.length} items).`);
-    } catch (err) {
-        console.error("Failed to populate game animal list:", err);
-        const statusEl = document.getElementById('csv-status');
-        if (statusEl) statusEl.textContent = '更新失敗: ' + err.message;
-    }
-}
-
-// 設定適用
-async function loadAndApplySettings() {
-    try {
-        let themeSetting = await db.settings.get('theme');
-        if (!themeSetting) { themeSetting = { key: 'theme', value: 'light' }; await db.settings.put(themeSetting); }
-        applyTheme(themeSetting.value);
-        let fontSizeSetting = await db.settings.get('fontSize');
-        if (!fontSizeSetting) { fontSizeSetting = { key: 'fontSize', value: 'medium' }; await db.settings.put(fontSizeSetting); }
-        applyFontSize(fontSizeSetting.value);
-    } catch (err) { console.error("Failed to load settings:", err); }
-}
-function applyTheme(themeValue) {
-    const root = document.documentElement;
-    root.classList.remove('theme-light', 'theme-dark', 'theme-sepia', 'theme-light-green', 'theme-light-blue');
-    root.classList.add(themeValue === 'sepia' ? 'theme-sepia' : themeValue === 'lightgreen' ? 'theme-light-green' : themeValue === 'lightblue' ? 'theme-light-blue' : 'theme-light');
-}
-function applyFontSize(sizeValue) {
-    const root = document.documentElement;
-    root.classList.remove('font-size-xsmall', 'font-size-small', 'font-size-medium', 'font-size-large', 'font-size-xlarge');
-    root.classList.add(`font-size-${sizeValue}`);
-}
-
-// ナビゲーション
-function setupTabs() {
-    tabs.trap.addEventListener('click', () => { appState.trapView = 'open'; navigateTo('trap', showTrapPage, '罠'); });
-    tabs.gun.addEventListener('click', () => navigateTo('gun', showGunPage, '銃'));
-    tabs.catch.addEventListener('click', () => navigateTo('catch', showCatchPage, '捕獲'));
-    tabs.checklist.addEventListener('click', () => navigateTo('checklist', showChecklistPage, 'チェック'));
-    tabs.info.addEventListener('click', () => navigateTo('info', showInfoPage, '情報'));
-    tabs.settings.addEventListener('click', () => navigateTo('settings', showSettingsPage, '設定'));
-}
-
-function navigateTo(pageId, pageFunction, title) {
-    if (appState.activeBlobUrls && appState.activeBlobUrls.length > 0) {
-        appState.activeBlobUrls.forEach(url => URL.revokeObjectURL(url));
-        appState.activeBlobUrls = [];
-    }
-    appState.currentPage = pageId;
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BLNCR LURE HANGAR</title>
     
-    // タブの見た目更新 (classList.replaceは使わない)
-    Object.values(tabs).forEach(tab => {
-        if(tab) {
-            tab.classList.remove('tab-active');
-            tab.classList.add('tab-inactive');
-        }
-    });
-    if (tabs[pageId]) {
-        tabs[pageId].classList.remove('tab-inactive');
-        tabs[pageId].classList.add('tab-active');
-    }
+    <!-- PWA設定 -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1e293b">
+    
+    <!-- iOS用設定 -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="BLNCR LURE HANGAR">
+    
+    <link rel="apple-touch-icon" href="icon-512.png">
+    <link rel="icon" type="image/png" href="favicon.png">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root { --app-bg-color: #f3f4f6; --app-font-scale: 100%; }
+        /* タッチデバイスでの選択やメニュー表示を防止 */
+        body { -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; background-color: #333; padding-bottom: env(safe-area-inset-bottom, 80px); font-size: var(--app-font-scale); -webkit-touch-callout: none; }
+        img { pointer-events: none; -webkit-user-drag: none; } /* 画像のドラッグ、イベントを無効化 */
+        
+        #app { background-color: var(--app-bg-color); transition: background-color 0.3s ease; }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+        .image-preview { background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 20.5V18H0v-2h20v-2H0v-2h20v-2H0V8h20V6H0V4h20V2H0V0h22v22h-2z' fill='%239C92AC' fill-opacity='0.1' fill-rule='evenodd'/%3E%3C/svg%3E"); }
+        .modal-enter { opacity: 0; transform: scale(0.95); }
+        .modal-enter-active { opacity: 1; transform: scale(1); transition: all 0.2s ease-out; }
+        .modal-exit { opacity: 1; transform: scale(1); }
+        .modal-exit-active { opacity: 0; transform: scale(0.95); transition: all 0.2s ease-in; }
+        .hidden-input { display: none; }
+        
+        .sortable-ghost { opacity: 0.4; background-color: #e2e8f0; }
+        .sortable-chosen { transform: scale(1.05); box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1); z-index: 50; }
+        .sortable-drag { opacity: 1; }
+    </style>
+</head>
+<body class="text-gray-800 font-sans antialiased h-screen overflow-hidden flex justify-center bg-gray-900" oncontextmenu="return false;">
 
-    updateHeader(title, false);
-    try { pageFunction(); } catch (err) { console.error(`Failed: ${pageId}`, err); app.innerHTML = `<div class="error-box">エラー: ${err.message}</div>`; }
-}
-
-function updateHeader(title, showBack = false) {
-    headerTitle.textContent = title;
-    backButton.classList.toggle('hidden', !showBack);
-    if (showBack) {
-        backButton.onclick = () => {
-            if (appState.currentPage === 'trap') navigateTo('trap', showTrapPage, '罠');
-            else if (appState.currentPage === 'gun') navigateTo('gun', showGunPage, '銃');
-            else if (appState.currentPage === 'catch') navigateTo('catch', showCatchPage, '捕獲');
-            else if (appState.currentPage === 'checklist') navigateTo('checklist', showChecklistPage, 'チェック');
-            else if (appState.currentPage === 'info') navigateTo('info', showInfoPage, '情報');
-            else if (appState.currentPage === 'settings') navigateTo('settings', showSettingsPage, '設定');
-            else navigateTo('trap', showTrapPage, '罠');
-        };
-    }
-    headerActions.innerHTML = '';
-}
-
-// 共通ヘルパー
-function getCurrentLocation() {
-    return new Promise((resolve, reject) => {
-        if (!navigator.geolocation) { reject(new Error('GPS非対応')); return; }
-        navigator.geolocation.getCurrentPosition(
-            (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-            (err) => reject(new Error('GPS取得失敗')), { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        );
-    });
-}
-function escapeHTML(str) {
-    if (str == null) return '';
-    return str.toString().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-function formatDate(dateString) {
-    if (!dateString) return '-';
-    try {
-        const parts = dateString.split('-');
-        if (parts.length === 3) return `${parts[0]}/${parts[1]}/${parts[2]}`;
-        const date = new Date(dateString);
-        if (isNaN(date.getTime())) return dateString; 
-        return `${date.getFullYear()}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`;
-    } catch (e) { return dateString; }
-}
-function parseCSV(text) {
-    const arr = [];
-    let quote = false;
-    let col = 0, c = 0;
-    text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    for (; c < text.length; c++) {
-        let cc = text[c], nc = text[c+1];
-        arr[arr.length-1] = arr[arr.length-1] || [];
-        arr[arr.length-1][col] = arr[arr.length-1][col] || '';
-        if (cc == '"' && quote && nc == '"') { arr[arr.length-1][col] += cc; ++c; continue; }
-        if (cc == '"') { quote = !quote; continue; }
-        if (cc == ',' && !quote) { ++col; continue; }
-        if (cc == '\n' && !quote) { ++col; if (col > 0) { arr.push([]); col = 0; } continue; }
-        arr[arr.length-1][col] += cc;
-    }
-    return arr;
-}
-function resizeImage(file, maxSize = 800) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const img = new Image();
-            img.onload = () => {
-                EXIF.getData(img, function() {
-                    const orientation = EXIF.getTag(this, "Orientation");
-                    let w = img.width, h = img.height;
-                    if (w > h) { if (w > maxSize) { h = Math.round(h * (maxSize / w)); w = maxSize; } }
-                    else { if (h > maxSize) { w = Math.round(w * (maxSize / h)); h = maxSize; } }
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    if (orientation >= 5 && orientation <= 8) { canvas.width = h; canvas.height = w; }
-                    else { canvas.width = w; canvas.height = h; }
-                    switch (orientation) {
-                        case 2: ctx.transform(-1, 0, 0, 1, w, 0); break;
-                        case 3: ctx.transform(-1, 0, 0, -1, w, h); break;
-                        case 4: ctx.transform(1, 0, 0, -1, 0, h); break;
-                        case 5: ctx.transform(0, 1, 1, 0, 0, 0); break;
-                        case 6: ctx.transform(0, 1, -1, 0, h, 0); break;
-                        case 7: ctx.transform(0, -1, -1, 0, h, w); break;
-                        case 8: ctx.transform(0, -1, 1, 0, 0, w); break;
-                    }
-                    if (orientation >= 5 && orientation <= 8) ctx.drawImage(img, 0, 0, h, w);
-                    else ctx.drawImage(img, 0, 0, w, h);
-                    canvas.toBlob((blob) => { if (blob) resolve(blob); else reject(new Error('変換失敗')); }, 'image/jpeg', 0.8);
-                });
-            };
-            img.onerror = () => reject(new Error('画像読込失敗'));
-            img.src = e.target.result;
-        };
-        reader.readAsDataURL(file);
-    });
-}
-function showImageModal(blobUrl) {
-    closeImageModal();
-    const ol = document.createElement('div'); ol.id = 'image-modal-overlay'; ol.className = 'image-modal-overlay';
-    const ct = document.createElement('div'); ct.className = 'image-modal-content';
-    const img = document.createElement('img'); img.src = blobUrl;
-    ct.appendChild(img); ol.appendChild(ct); document.body.appendChild(ol);
-    ol.onclick = closeImageModal;
-}
-function closeImageModal() {
-    const ol = document.getElementById('image-modal-overlay');
-    if (ol) ol.remove();
-}
-
-
-// ----------------------------------------------------------------------------
-// 3. 罠管理機能 (UI改善)
-// ----------------------------------------------------------------------------
-
-async function showTrapPage() {
-    const view = appState.trapView;
-    const filters = appState.trapFilters;
-    const sort = (view === 'open') ? appState.trapSortOpen : appState.trapSortClosed;
-    const trapTypes = await db.trap_type.toArray();
-    const typeOptions = trapTypes.map(type => `<option value="${escapeHTML(type.name)}" ${filters.type === type.name ? 'selected' : ''}>${escapeHTML(type.name)}</option>`).join('');
-    const isNewDisabled = view === 'closed';
-
-    app.innerHTML = `
-        <div class="space-y-2">
-            <div class="sub-tab-container">
-                <div id="trap-tab-open" class="sub-tab-btn ${view === 'open' ? 'active' : ''}">設置中</div>
-                <div id="trap-tab-closed" class="sub-tab-btn ${view === 'closed' ? 'active' : ''}">過去の罠</div>
-            </div>
-            
-            <div class="flex space-x-2">
-                <button id="new-trap-btn" class="btn btn-primary flex-1" ${isNewDisabled ? 'disabled' : ''}><i class="fas fa-plus"></i> 新規設置</button>
-                <button id="manage-types-btn" class="btn btn-secondary flex-1"><i class="fas fa-cog"></i> 種類管理</button>
-            </div>
-
-            <div class="card bg-white">
-                <div class="grid grid-cols-2 gap-2">
-                    <div class="form-group mb-0">
-                        <label class="form-label">種類</label>
-                        <select id="trap-filter-type" class="form-select">
-                            <option value="all" ${filters.type === 'all' ? 'selected' : ''}>すべて</option>
-                            ${typeOptions}
-                        </select>
-                    </div>
-                    <div class="form-group mb-0">
-                        <label class="form-label">順序</label>
-                        <div class="flex space-x-2">
-                            <select id="trap-sort-key" class="form-select">
-                                <option value="trap_number" ${sort.key === 'trap_number' ? 'selected' : ''}>番号</option>
-                                <option value="${view === 'open' ? 'setup_date' : 'close_date'}" ${sort.key === (view === 'open' ? 'setup_date' : 'close_date') ? 'selected' : ''}>日付</option>
-                            </select>
-                            <select id="trap-sort-order" class="form-select w-24">
-                                <option value="asc" ${sort.order === 'asc' ? 'selected' : ''}>昇順</option>
-                                <option value="desc" ${sort.order === 'desc' ? 'selected' : ''}>降順</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div id="trap-list" class="space-y-1"><p class="text-gray-500 text-center py-4">読み込み中...</p></div>
+    <div id="app" class="w-full max-w-md h-full shadow-xl overflow-hidden relative flex flex-col mx-auto">
+        <header class="bg-slate-800 text-white p-4 sticky top-0 z-50 flex justify-between items-center shadow-md shrink-0 pt-safe-top">
+            <h1 class="text-sm font-bold tracking-wide whitespace-nowrap"><i class="fa-solid fa-fish-fins mr-2"></i>BLNCR LURE HANGAR</h1>
+            <div id="header-actions" class="flex items-center gap-2"></div>
+        </header>
+        <main id="main-content" class="p-4 overflow-y-auto grow"></main>
+        <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around items-center pb-safe-bottom max-w-md mx-auto z-50 h-16 shrink-0">
+            <button onclick="router.navigate('home')" class="nav-btn flex-1 h-full text-center text-gray-500 hover:text-blue-600 focus:text-blue-600 transition" data-target="home"><div class="flex flex-col items-center justify-center h-full"><i class="fa-solid fa-layer-group text-xl mb-1"></i><span class="text-[10px]">ボックス</span></div></button>
+            <button onclick="router.navigate('analysis')" class="nav-btn flex-1 h-full text-center text-gray-500 hover:text-blue-600 focus:text-blue-600 transition" data-target="analysis"><div class="flex flex-col items-center justify-center h-full"><i class="fa-solid fa-chart-line text-xl mb-1"></i><span class="text-[10px]">分析</span></div></button>
+            <button onclick="router.navigate('notes')" class="nav-btn flex-1 h-full text-center text-gray-500 hover:text-blue-600 focus:text-blue-600 transition" data-target="notes"><div class="flex flex-col items-center justify-center h-full"><i class="fa-solid fa-triangle-exclamation text-xl mb-1"></i><span class="text-[10px]">注意</span></div></button>
+            <button onclick="router.navigate('settings')" class="nav-btn flex-1 h-full text-center text-gray-500 hover:text-blue-600 focus:text-blue-600 transition" data-target="settings"><div class="flex flex-col items-center justify-center h-full"><i class="fa-solid fa-sliders text-xl mb-1"></i><span class="text-[10px]">設定</span></div></button>
+        </nav>
+        <div id="modal-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-[60] hidden flex items-center justify-center p-4">
+            <div id="modal-container" class="bg-white rounded-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl transform transition-all"></div>
         </div>
-    `;
-    updateHeader('罠管理', false);
+        <div id="toast" class="fixed top-20 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-lg z-[70] transition-opacity duration-300 opacity-0 pointer-events-none text-sm">Notification</div>
+    </div>
 
-    document.getElementById('trap-tab-open').onclick = () => { appState.trapView = 'open'; showTrapPage(); };
-    document.getElementById('trap-tab-closed').onclick = () => { appState.trapView = 'closed'; showTrapPage(); };
-    document.getElementById('new-trap-btn').onclick = () => { if (!isNewDisabled) showTrapEditForm(null); };
-    document.getElementById('manage-types-btn').onclick = () => showTrapTypeManagement();
-    
-    document.getElementById('trap-filter-type').addEventListener('change', (e) => { filters.type = e.target.value; renderTrapList(); });
-    document.getElementById('trap-sort-key').addEventListener('change', (e) => { sort.key = e.target.value; renderTrapList(); });
-    document.getElementById('trap-sort-order').addEventListener('change', (e) => { sort.order = e.target.value; renderTrapList(); });
+    <script>
+        if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').then(reg => console.log('SW Registered', reg)).catch(err => console.log('SW Fail', err)); }); }
 
-    await renderTrapList();
-}
-
-async function renderTrapList() {
-    const listEl = document.getElementById('trap-list');
-    if (!listEl) return;
-    try {
-        const view = appState.trapView;
-        const filters = appState.trapFilters;
-        const sort = (view === 'open') ? appState.trapSortOpen : appState.trapSortClosed;
-        const isOpen = (view === 'open') ? 1 : 0;
-
-        let query = db.trap.where('is_open').equals(isOpen);
-        let traps = await query.toArray();
-
-        if (filters.type !== 'all') { traps = traps.filter(t => t.type === filters.type); }
-        
-        traps.sort((a, b) => {
-            let valA = a[sort.key], valB = b[sort.key];
-            if (sort.key === 'trap_number') return sort.order === 'asc' ? String(valA).localeCompare(String(valB), undefined, {numeric:true}) : String(valB).localeCompare(String(valA), undefined, {numeric:true});
-            if (valA < valB) return sort.order === 'asc' ? -1 : 1;
-            if (valA > valB) return sort.order === 'asc' ? 1 : -1;
-            return 0;
-        });
-
-        if (traps.length === 0) { listEl.innerHTML = `<p class="text-gray-500 text-center py-4">データがありません。</p>`; return; }
-
-        const catchCounts = await Promise.all(traps.map(t => db.catch_records.where('trap_id').equals(t.id).count()));
-
-        listEl.innerHTML = traps.map((trap, index) => {
-            const count = catchCounts[index];
-            const badge = count > 0 ? `<span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-bold">${count}</span>` : '';
-            return `
-                <div class="trap-card bg-white" data-id="${trap.id}">
-                    <div>
-                        <h3 class="font-bold text-blue-600">No. ${escapeHTML(trap.trap_number)}</h3>
-                        <p>${escapeHTML(trap.type)} <span class="text-xs text-gray-400">(${formatDate(trap.setup_date)})</span></p>
-                        ${trap.close_date ? `<p class="text-xs text-gray-500">撤去: ${formatDate(trap.close_date)}</p>` : ''}
-                    </div>
-                    <div class="flex items-center gap-2">
-                        ${badge}
-                        <i class="fas fa-chevron-right text-gray-300"></i>
-                    </div>
-                </div>
-            `;
-        }).join('');
-
-        listEl.querySelectorAll('.trap-card').forEach(item => {
-            item.addEventListener('click', () => showTrapDetailPage(parseInt(item.dataset.id, 10)));
-        });
-    } catch (err) { console.error(err); listEl.innerHTML = `<div class="error-box">読み込み失敗</div>`; }
-}
-
-async function showTrapDetailPage(id) {
-    const trap = await db.trap.get(id);
-    if (!trap) return;
-    
-    updateHeader(`No.${trap.trap_number}`, true);
-    backButton.onclick = () => showTrapPage();
-
-    let actionButtons = `
-        <div class="flex gap-2">
-            <button id="edit-trap-btn" class="btn btn-secondary flex-1">編集</button>
-            <button id="delete-trap-btn" class="btn btn-danger flex-1">削除</button>
-        </div>`;
-
-    const catchCount = await db.catch_records.where('trap_id').equals(id).count();
-    let catchSection = `
-        <div class="card bg-white">
-            <div class="flex justify-between items-center mb-2">
-                <h3 class="font-bold text-gray-800">捕獲記録 (${catchCount})</h3>
-                <button id="add-catch-to-trap-btn" class="btn btn-sm btn-primary"><i class="fas fa-plus"></i></button>
-            </div>
-            <button id="show-related-catches-btn" class="btn btn-secondary w-full text-sm">一覧を見る</button>
-        </div>`;
-
-    let closeSection = '';
-    if (trap.is_open === 1) {
-        closeSection = `
-            <div class="card bg-white border border-red-200">
-                <label class="form-label">撤去日</label>
-                <div class="flex gap-2">
-                    <input type="date" id="close-date-input" class="form-input" value="${new Date().toISOString().split('T')[0]}">
-                    <button id="close-trap-btn" class="btn btn-success whitespace-nowrap">撤去する</button>
-                </div>
-            </div>`;
-    }
-
-    let infoHTML = `<div class="card bg-white"><table class="w-full text-sm"><tbody>`;
-    const rows = [
-        ['番号', trap.trap_number], ['種類', trap.type], ['設置日', formatDate(trap.setup_date)],
-        ['状態', trap.is_open ? '設置中' : '撤去済'], ['撤去日', trap.close_date ? formatDate(trap.close_date) : '-'],
-        ['座標', `${trap.latitude||'-'}, ${trap.longitude||'-'}`]
-    ];
-    rows.forEach(r => infoHTML += `<tr><th class="text-left py-1 w-1/3 text-gray-500">${r[0]}</th><td>${escapeHTML(r[1])}</td></tr>`);
-    infoHTML += `</tbody></table></div>`;
-
-    let imageHTML = '';
-    if (trap.image_blob) {
-        const url = URL.createObjectURL(trap.image_blob);
-        appState.activeBlobUrls.push(url);
-        imageHTML = `<div class="card bg-white"><div class="photo-preview cursor-zoom-in"><img src="${url}" id="detail-image"></div></div>`;
-    }
-
-    app.innerHTML = `<div class="space-y-2">${actionButtons}${imageHTML}${infoHTML}${trap.memo ? `<div class="card bg-white"><h3 class="font-bold border-b mb-1">メモ</h3><p class="text-sm">${escapeHTML(trap.memo)}</p></div>` : ''}${catchSection}${closeSection}</div>`;
-
-    document.getElementById('edit-trap-btn').onclick = () => showTrapEditForm(id);
-    document.getElementById('delete-trap-btn').onclick = () => deleteTrap(id);
-    document.getElementById('show-related-catches-btn').onclick = () => { appState.currentCatchMethod = 'trap'; appState.currentCatchRelationId = id; navigateTo('catch', showCatchListPage, '罠の捕獲記録'); };
-    document.getElementById('add-catch-to-trap-btn').onclick = () => showCatchEditForm(null, { trapId: id, gunLogId: null });
-    
-    if (trap.is_open === 1) {
-        document.getElementById('close-trap-btn').onclick = async () => {
-            const closeDate = document.getElementById('close-date-input').value;
-            if(!closeDate) return alert('撤去日を入力してください');
-            if(confirm('この罠を撤去済みにしますか？')) {
-                await db.trap.update(id, { is_open: 0, close_date: closeDate });
-                showTrapDetailPage(id);
+        const Utils = {
+            uuid: () => Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
+            compressImage: (file, maxWidth = 600, quality = 0.6) => {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader(); reader.readAsDataURL(file);
+                    reader.onload = (e) => { const img = new Image(); img.src = e.target.result; img.onload = () => { let w = img.width, h = img.height; if(w > maxWidth){ h *= maxWidth/w; w = maxWidth; } const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h); resolve(c.toDataURL('image/jpeg', quality)); }; img.onerror = reject; }; reader.onerror = reject;
+                });
+            },
+            formatDate: (ts) => ts ? new Date(ts).toLocaleDateString('ja-JP') : '',
+            getTodayString: () => { const d = new Date(); return `${d.getFullYear()}-${('0'+(d.getMonth()+1)).slice(-2)}-${('0'+d.getDate()).slice(-2)}`; },
+            showToast: (msg) => { const t = document.getElementById('toast'); t.textContent = msg; t.classList.remove('opacity-0'); setTimeout(() => t.classList.add('opacity-0'), 3000); },
+            simplifyType: (str) => {
+                if (!str) return '';
+                const match = str.match(/\(([^)]+)\)/);
+                return match ? match[1] : str;
             }
         };
-    }
-    if (document.getElementById('detail-image')) document.getElementById('detail-image').onclick = (e) => showImageModal(e.target.src);
-}
 
-async function showTrapEditForm(id) {
-    let trap = { trap_number: '', type: '', setup_date: new Date().toISOString().split('T')[0], memo: '', latitude: '', longitude: '', image_blob: null, is_open: 1 };
-    const types = await db.trap_type.toArray();
-    if (id) {
-        const existing = await db.trap.get(id);
-        if (existing) trap = existing;
-    }
-    
-    let imgPreview = '';
-    if (trap.image_blob) {
-        const url = URL.createObjectURL(trap.image_blob);
-        appState.activeBlobUrls.push(url);
-        imgPreview = `<div class="form-group"><label class="form-label">現在の写真:</label><div class="photo-preview"><img src="${url}"><button type="button" id="remove-image-btn" class="photo-preview-btn-delete">&times;</button></div></div>`;
-    }
-
-    app.innerHTML = `
-        <div class="card bg-white">
-            <form id="trap-form" class="space-y-3">
-                <div class="form-group"><label class="form-label">番号</label><input type="text" id="trap-number" class="form-input" value="${escapeHTML(trap.trap_number)}" required></div>
-                <div class="form-group"><label class="form-label">種類</label><select id="trap-type" class="form-select">${types.map(t=>`<option value="${t.name}" ${t.name===trap.type?'selected':''}>${t.name}</option>`).join('')}</select></div>
-                <div class="form-group"><label class="form-label">設置日</label><input type="date" id="setup-date" class="form-input" value="${escapeHTML(trap.setup_date)}" required></div>
-                <div class="form-group">
-                    <label class="form-label">位置</label>
-                    <div class="flex gap-2 mb-1"><input type="number" step="any" id="trap-lat" class="form-input" value="${escapeHTML(trap.latitude)}" placeholder="緯度"><input type="number" step="any" id="trap-lon" class="form-input" value="${escapeHTML(trap.longitude)}" placeholder="経度"></div>
-                    <button type="button" id="get-gps-btn" class="btn btn-secondary w-full text-sm">現在地</button>
-                </div>
-                ${imgPreview}
-                <div class="form-group"><label class="form-label">写真</label><input type="file" id="trap-image" class="form-input" accept="image/*"><div id="image-preview-container" class="mt-2"></div></div>
-                <div class="form-group"><label class="form-label">メモ</label><textarea id="trap-memo" class="form-input">${escapeHTML(trap.memo)}</textarea></div>
-                <button type="submit" class="btn btn-primary w-full">保存</button>
-            </form>
-        </div>
-    `;
-    updateHeader(id ? '罠の編集' : '新規設置', true);
-    backButton.onclick = () => id ? showTrapDetailPage(id) : showTrapPage();
-
-    document.getElementById('get-gps-btn').onclick = async () => {
-        try { const loc = await getCurrentLocation(); document.getElementById('trap-lat').value = loc.latitude; document.getElementById('trap-lon').value = loc.longitude; } catch(e) { alert(e.message); }
-    };
-    
-    let resizedImageBlob = null;
-    document.getElementById('trap-image').onchange = async (e) => {
-        const file = e.target.files[0];
-        if(!file) return;
-        try {
-            resizedImageBlob = await resizeImage(file, 800);
-            const url = URL.createObjectURL(resizedImageBlob);
-            appState.activeBlobUrls.push(url);
-            document.getElementById('image-preview-container').innerHTML = `<div class="photo-preview"><img src="${url}"></div>`;
-        } catch(e) { alert(e.message); }
-    };
-    if (document.getElementById('remove-image-btn')) {
-        document.getElementById('remove-image-btn').onclick = function() { this.closest('.form-group').remove(); trap.image_blob = null; };
-    }
-
-    document.getElementById('trap-form').onsubmit = async (e) => {
-        e.preventDefault();
-        const data = {
-            trap_number: document.getElementById('trap-number').value,
-            type: document.getElementById('trap-type').value,
-            setup_date: document.getElementById('setup-date').value,
-            latitude: document.getElementById('trap-lat').value,
-            longitude: document.getElementById('trap-lon').value,
-            memo: document.getElementById('trap-memo').value,
-            image_blob: trap.image_blob,
-            is_open: id ? trap.is_open : 1 
-        };
-        if (resizedImageBlob) data.image_blob = resizedImageBlob;
-        
-        if (id) { await db.trap.update(id, data); showTrapDetailPage(id); }
-        else { const newId = await db.trap.add(data); showTrapDetailPage(newId); }
-    };
-}
-
-async function deleteTrap(id) {
-    if(!confirm('本当に削除しますか？\n紐付いた捕獲記録も削除されます。')) return;
-    await db.transaction('rw', db.trap, db.catch_records, async()=>{
-        await db.catch_records.where('trap_id').equals(id).delete();
-        await db.trap.delete(id);
-    });
-    showTrapPage();
-}
-
-async function showTrapTypeManagement() {
-    updateHeader('種類管理', true);
-    backButton.onclick = () => showTrapPage();
-    app.innerHTML = `
-        <div class="card bg-white mb-4"><form id="type-form" class="flex gap-2"><input id="type-name" class="form-input" placeholder="新しい種類" required><button class="btn btn-primary">追加</button></form></div>
-        <div id="type-list" class="space-y-2"></div>
-    `;
-    const render = async () => {
-        const list = await db.trap_type.toArray();
-        document.getElementById('type-list').innerHTML = list.map(t=>`<div class="card bg-white flex justify-between p-2"><span>${escapeHTML(t.name)}</span><button class="btn btn-danger btn-sm del-type" data-id="${t.id}">×</button></div>`).join('');
-        document.querySelectorAll('.del-type').forEach(b => b.onclick = async (e)=>{
-            if(confirm('削除しますか？')) { await db.trap_type.delete(parseInt(e.target.dataset.id)); render(); }
-        });
-    };
-    render();
-    document.getElementById('type-form').onsubmit = async (e) => {
-        e.preventDefault();
-        try { await db.trap_type.add({name: document.getElementById('type-name').value}); document.getElementById('type-name').value=''; render(); } catch { alert('エラー'); }
-    };
-}
-
-
-// ----------------------------------------------------------------------------
-// 4. 銃管理機能 (UI改善)
-// ----------------------------------------------------------------------------
-
-async function showGunPage() {
-    const filters = appState.gunLogFilters;
-    const sort = appState.gunLogSort;
-    const guns = await db.gun.toArray();
-    const gunOptions = guns.map(g => `<option value="${g.id}" ${filters.gun_id == g.id ? 'selected' : ''}>${escapeHTML(g.name)}</option>`).join('');
-
-    app.innerHTML = `
-        <div class="space-y-2">
-            <div class="flex gap-2">
-                <button id="new-gun-log-btn" class="btn btn-primary flex-1"><i class="fas fa-plus"></i> 使用記録</button>
-                <button id="manage-guns-btn" class="btn btn-secondary flex-1"><i class="fas fa-cog"></i> 所持銃</button>
-            </div>
-            <div class="card bg-white">
-                <div class="grid grid-cols-2 gap-2">
-                    <div class="form-group mb-0"><label class="form-label">目的</label><select id="gun-filter-purpose" class="form-select"><option value="all">全て</option><option value="狩猟">狩猟</option><option value="射撃">射撃</option><option value="有害駆除">有害駆除</option><option value="その他">その他</option></select></div>
-                    <div class="form-group mb-0"><label class="form-label">銃</label><select id="gun-filter-id" class="form-select"><option value="all">全て</option>${gunOptions}</select></div>
-                </div>
-            </div>
-            <div id="gun-log-list" class="space-y-1"><p class="text-gray-500 text-center py-4">読み込み中...</p></div>
-        </div>
-    `;
-    updateHeader('銃管理', false);
-    
-    document.getElementById('gun-filter-purpose').value = filters.purpose;
-    
-    document.getElementById('new-gun-log-btn').onclick = () => showGunLogEditForm(null);
-    document.getElementById('manage-guns-btn').onclick = () => showGunListManagementPage();
-    document.getElementById('gun-filter-purpose').onchange = (e) => { filters.purpose = e.target.value; renderGunLogList(); };
-    document.getElementById('gun-filter-id').onchange = (e) => { filters.gun_id = e.target.value; renderGunLogList(); };
-
-    await renderGunLogList();
-}
-
-async function renderGunLogList() {
-    const listEl = document.getElementById('gun-log-list');
-    if (!listEl) return;
-    const { purpose, gun_id } = appState.gunLogFilters;
-    let logs = await db.gun_log.orderBy('use_date').reverse().toArray();
-    
-    if (purpose !== 'all') logs = logs.filter(l => l.purpose === purpose);
-    if (gun_id !== 'all') logs = logs.filter(l => l.gun_id == gun_id);
-
-    if (logs.length === 0) { listEl.innerHTML = '<p class="text-gray-500 text-center py-4">履歴なし</p>'; return; }
-
-    const guns = await db.gun.toArray();
-    const gunMap = new Map(guns.map(g => [g.id, g.name]));
-    const catchCounts = await Promise.all(logs.map(l => db.catch_records.where('gun_log_id').equals(l.id).count()));
-
-    listEl.innerHTML = logs.map((log, i) => {
-        const count = catchCounts[i];
-        const badge = count > 0 ? `<span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-bold">${count}</span>` : '';
-        return `
-            <div class="trap-card bg-white" data-id="${log.id}">
-                <div>
-                    <h3 class="font-bold text-blue-600">${formatDate(log.use_date)}</h3>
-                    <p>${escapeHTML(log.purpose)} / ${escapeHTML(gunMap.get(log.gun_id) || '削除済')}</p>
-                </div>
-                <div class="flex items-center gap-2">
-                    ${badge}
-                    <i class="fas fa-chevron-right text-gray-300"></i>
-                </div>
-            </div>`;
-    }).join('');
-    
-    listEl.querySelectorAll('.trap-card').forEach(d => d.onclick = () => showGunLogDetailPage(parseInt(d.dataset.id)));
-}
-
-async function showGunListManagementPage() {
-    updateHeader('所持銃の管理', true);
-    backButton.onclick = () => showGunPage();
-    app.innerHTML = `
-        <div class="space-y-2">
-            <div class="card bg-white"><button id="add-gun-btn" class="btn btn-primary w-full"><i class="fas fa-plus"></i> 銃を追加</button></div>
-            <div id="gun-mgmt-list" class="space-y-1"></div>
-        </div>
-    `;
-    document.getElementById('add-gun-btn').onclick = () => showGunEditForm(null);
-    const listEl = document.getElementById('gun-mgmt-list');
-    const guns = await db.gun.toArray();
-    if(guns.length===0) listEl.innerHTML = '<p class="text-center text-gray-500">登録なし</p>';
-    else listEl.innerHTML = guns.map(g => `<div class="trap-card bg-white" data-id="${g.id}"><div><h3 class="font-bold">${escapeHTML(g.name)}</h3><p class="text-sm text-gray-600">${escapeHTML(g.type)} / ${escapeHTML(g.caliber)}</p></div><i class="fas fa-chevron-right text-gray-300"></i></div>`).join('');
-    listEl.querySelectorAll('.trap-card').forEach(d => d.onclick = () => showGunDetailPage(parseInt(d.dataset.id)));
-}
-
-async function showGunDetailPage(id) {
-    const gun = await db.gun.get(id);
-    if (!gun) return;
-    updateHeader(gun.name, true);
-    backButton.onclick = () => showGunListManagementPage();
-
-    // 編集・削除
-    const actions = `<div class="flex gap-2"><button id="edit-gun" class="btn btn-secondary flex-1">編集</button><button id="del-gun" class="btn btn-danger flex-1">削除</button></div>`;
-    
-    // 基本情報
-    let info = `<div class="card bg-white"><h3 class="font-bold border-b mb-2">弾の管理</h3><div class="flex justify-between items-center mb-2"><span>残弾数:</span><span id="ammo-rem" class="font-bold text-xl">...</span></div><form id="ammo-purchase-form" class="flex gap-2"><input type="date" id="ammo-date" class="form-input w-1/3" value="${new Date().toISOString().split('T')[0]}"><input type="number" id="ammo-amount" class="form-input flex-1" placeholder="購入数" required><button class="btn btn-sm btn-primary">追加</button></form></div>`;
-
-    // 履歴ボタン
-    const histBtn = `<div class="card bg-white"><button id="show-hist" class="btn btn-secondary w-full text-left"><span class="w-6"><i class="fas fa-history"></i></span> この銃の履歴を見る</button></div>`;
-
-    app.innerHTML = `<div class="space-y-2">${actions}${info}${histBtn}</div>`;
-
-    document.getElementById('edit-gun').onclick = () => showGunEditForm(id);
-    document.getElementById('del-gun').onclick = async () => { if(confirm('削除しますか？')) { await db.gun.delete(id); showGunListManagementPage(); }};
-    document.getElementById('show-hist').onclick = () => { appState.gunLogFilters.gun_id = id; showGunPage(); };
-
-    // 弾購入イベント
-    document.getElementById('ammo-purchase-form').onsubmit = async (e) => {
-        e.preventDefault();
-        try {
-            await db.ammo_purchases.add({ gun_id: id, purchase_date: document.getElementById('ammo-date').value, amount: parseInt(document.getElementById('ammo-amount').value) });
-            document.getElementById('ammo-amount').value = '';
-            renderAmmoInfo(id);
-        } catch { alert('保存失敗'); }
-    };
-    renderAmmoInfo(id);
-}
-
-async function renderAmmoInfo(gunId) {
-    const purchases = await db.ammo_purchases.where('gun_id').equals(gunId).toArray();
-    const logs = await db.gun_log.where('gun_id').equals(gunId).and(l => l.ammo_count > 0).toArray();
-    
-    const pTotal = purchases.reduce((s, p) => s + p.amount, 0);
-    const cTotal = logs.reduce((s, l) => s + (l.ammo_count || 0), 0);
-    
-    const elRem = document.getElementById('ammo-rem');
-    if(elRem) elRem.textContent = `${pTotal - cTotal} 発`;
-}
-
-async function showGunEditForm(id) {
-    let gun = { name: '', type: '', caliber: '' };
-    if (id) gun = await db.gun.get(id);
-    
-    updateHeader(id ? '銃の編集' : '銃の登録', true);
-    backButton.onclick = () => id ? showGunDetailPage(id) : showGunListManagementPage();
-
-    app.innerHTML = `
-        <div class="card bg-white">
-            <form id="gun-form" class="space-y-3">
-                <div class="form-group"><label class="form-label">名前</label><input id="g-name" class="form-input" value="${escapeHTML(gun.name)}" required></div>
-                <div class="form-group"><label class="form-label">種類</label><input id="g-type" class="form-input" value="${escapeHTML(gun.type)}"></div>
-                <div class="form-group"><label class="form-label">口径</label><input id="g-cal" class="form-input" value="${escapeHTML(gun.caliber)}"></div>
-                <button class="btn btn-primary w-full">保存</button>
-            </form>
-        </div>
-    `;
-    document.getElementById('gun-form').onsubmit = async (e) => {
-        e.preventDefault();
-        const data = { name: document.getElementById('g-name').value, type: document.getElementById('g-type').value, caliber: document.getElementById('g-cal').value };
-        try {
-            if(id) { await db.gun.update(id, data); showGunDetailPage(id); }
-            else { const nid = await db.gun.add(data); showGunDetailPage(nid); }
-        } catch { alert('保存失敗'); }
-    };
-}
-
-async function showGunLogDetailPage(id) {
-    const log = await db.gun_log.get(id);
-    if (!log) return;
-    const gun = await db.gun.get(log.gun_id);
-    
-    updateHeader('使用履歴詳細', true);
-    backButton.onclick = () => showGunPage();
-
-    const catchCount = await db.catch_records.where('gun_log_id').equals(id).count();
-    
-    // 画像
-    let imgHTML = '';
-    if(log.image_blob) {
-        const u = URL.createObjectURL(log.image_blob); appState.activeBlobUrls.push(u);
-        imgHTML = `<div class="card bg-white"><div class="photo-preview cursor-zoom-in"><img src="${u}" onclick="showImageModal(this.src)"></div></div>`;
-    }
-
-    // 情報
-    let info = `<div class="card bg-white"><table class="w-full text-sm"><tbody>`;
-    [['日付', formatDate(log.use_date)], ['銃', gun?gun.name:'-'], ['目的', log.purpose], ['場所', log.location], ['弾数', log.ammo_count+'発'], ['同行', log.companion]].forEach(r=> info+=`<tr><th class="w-1/3 text-left py-1 text-gray-500">${r[0]}</th><td>${escapeHTML(r[1])}</td></tr>`);
-    info += `</tbody></table></div>`;
-
-    app.innerHTML = `
-        <div class="space-y-2">
-            <div class="flex gap-2"><button id="edit-log" class="btn btn-secondary flex-1">編集</button><button id="del-log" class="btn btn-danger flex-1">削除</button></div>
-            ${imgHTML}${info}
-            <div class="card bg-white">
-                <div class="flex justify-between items-center mb-2">
-                    <h3 class="font-bold">捕獲記録 (${catchCount})</h3>
-                    <button id="add-catch" class="btn btn-sm btn-primary"><i class="fas fa-plus"></i></button>
-                </div>
-                <button id="view-catch" class="btn btn-secondary w-full text-sm">一覧を見る</button>
-            </div>
-        </div>
-    `;
-    
-    document.getElementById('edit-log').onclick = () => showGunLogEditForm(id);
-    document.getElementById('del-log').onclick = () => deleteGunLog(id);
-    document.getElementById('view-catch').onclick = () => { appState.currentCatchMethod='gun'; appState.currentCatchRelationId=id; navigateTo('catch', showCatchListPage, '銃の捕獲記録'); };
-    document.getElementById('add-catch').onclick = () => showCatchEditForm(null, { trapId:null, gunLogId: id });
-}
-
-async function showGunLogEditForm(id) {
-    let log = { use_date: new Date().toISOString().split('T')[0], gun_id: '', purpose: '狩猟', location: '', ammo_count: '', companion: '', latitude: '', longitude: '', memo: '', image_blob: null };
-    if (id) log = await db.gun_log.get(id);
-    const guns = await db.gun.toArray();
-
-    updateHeader(id?'使用履歴 編集':'新規使用履歴', true);
-    backButton.onclick = () => id ? showGunLogDetailPage(id) : showGunPage();
-
-    let imgPreview = '';
-    if(log.image_blob) {
-        const u = URL.createObjectURL(log.image_blob); appState.activeBlobUrls.push(u);
-        imgPreview = `<div class="form-group"><label class="form-label">現在の写真:</label><div class="photo-preview"><img src="${u}"><button type="button" id="rm-img" class="photo-preview-btn-delete">&times;</button></div></div>`;
-    }
-
-    app.innerHTML = `
-        <div class="card bg-white">
-            <form id="log-form" class="space-y-3">
-                <div class="form-group"><label class="form-label">日付</label><input type="date" id="l-date" class="form-input" value="${log.use_date}" required></div>
-                <div class="form-group"><label class="form-label">銃</label><select id="l-gun" class="form-select" required><option value="">選択</option>${guns.map(g=>`<option value="${g.id}" ${g.id==log.gun_id?'selected':''}>${g.name}</option>`).join('')}</select></div>
-                <div class="form-group"><label class="form-label">目的</label><select id="l-purpose" class="form-select">${['狩猟','射撃','有害駆除','その他'].map(p=>`<option value="${p}" ${p==log.purpose?'selected':''}>${p}</option>`).join('')}</select></div>
-                <div class="form-group"><label class="form-label">消費弾数</label><input type="number" id="l-ammo" class="form-input" value="${log.ammo_count}"></div>
-                <div class="form-group"><label class="form-label">場所</label><input id="l-loc" class="form-input" value="${escapeHTML(log.location)}"></div>
-                <div class="form-group"><label class="form-label">同行者</label><input id="l-comp" class="form-input" value="${escapeHTML(log.companion)}"></div>
-                <div class="form-group"><label class="form-label">位置</label><div class="flex gap-2 mb-1"><input type="number" step="any" id="l-lat" class="form-input" value="${escapeHTML(log.latitude)}" placeholder="緯度"><input type="number" step="any" id="l-lon" class="form-input" value="${escapeHTML(log.longitude)}" placeholder="経度"></div><button type="button" id="gps-btn" class="btn btn-secondary w-full">GPS取得</button></div>
-                ${imgPreview}
-                <div class="form-group"><label class="form-label">写真</label><input type="file" id="l-img" class="form-input" accept="image/*"><div id="preview" class="mt-2"></div></div>
-                <div class="form-group"><label class="form-label">メモ</label><textarea id="l-memo" class="form-input">${escapeHTML(log.memo)}</textarea></div>
-                <button class="btn btn-primary w-full">保存</button>
-            </form>
-        </div>
-    `;
-
-    document.getElementById('gps-btn').onclick = async () => { try{ const l = await getCurrentLocation(); document.getElementById('l-lat').value=l.latitude; document.getElementById('l-lon').value=l.longitude; }catch(e){alert(e.message);} };
-    if(document.getElementById('rm-img')) document.getElementById('rm-img').onclick = function(){ this.closest('.form-group').remove(); log.image_blob = null; };
-    
-    let resizedBlob = null;
-    document.getElementById('l-img').onchange = async (e) => {
-        if(!e.target.files[0]) return;
-        resizedBlob = await resizeImage(e.target.files[0]);
-        const u = URL.createObjectURL(resizedBlob); appState.activeBlobUrls.push(u);
-        document.getElementById('preview').innerHTML = `<div class="photo-preview"><img src="${u}"></div>`;
-    };
-
-    document.getElementById('log-form').onsubmit = async (e) => {
-        e.preventDefault();
-        const d = {
-            use_date: document.getElementById('l-date').value,
-            gun_id: parseInt(document.getElementById('l-gun').value),
-            purpose: document.getElementById('l-purpose').value,
-            ammo_count: parseInt(document.getElementById('l-ammo').value)||0,
-            location: document.getElementById('l-loc').value,
-            companion: document.getElementById('l-comp').value,
-            latitude: document.getElementById('l-lat').value,
-            longitude: document.getElementById('l-lon').value,
-            memo: document.getElementById('l-memo').value,
-            image_blob: log.image_blob
-        };
-        if(resizedBlob) d.image_blob = resizedBlob;
-        
-        if(id) { await db.gun_log.update(id, d); showGunLogDetailPage(id); }
-        else { const nid = await db.gun_log.add(d); showGunLogDetailPage(nid); }
-    };
-}
-
-async function deleteGunLog(id) {
-    if(confirm('削除しますか？\n捕獲記録も削除されます。')) {
-        await db.transaction('rw', db.gun_log, db.catch_records, async()=>{
-            await db.catch_records.where('gun_log_id').equals(id).delete();
-            await db.gun_log.delete(id);
-        });
-        showGunPage();
-    }
-}
-
-
-// ----------------------------------------------------------------------------
-// 5. 捕獲記録機能 (UI改善)
-// ----------------------------------------------------------------------------
-
-function showCatchPage() {
-    appState.currentCatchMethod = 'all';
-    appState.currentCatchRelationId = null;
-    showCatchListPage();
-}
-
-async function showCatchListPage() {
-    const filters = appState.catchFilters;
-    if (appState.currentCatchMethod === 'all') {
-        Object.assign(filters, { method: 'all', species: '', gender: 'all', age: 'all' });
-    }
-    
-    let filterHTML = '';
-    if (appState.currentCatchMethod === 'all') {
-        filterHTML = `
-            <div class="card bg-white mb-2 p-2">
-                <div class="flex gap-2">
-                    <div class="form-group mb-0 flex-1"><label class="form-label">種名</label><input id="c-spec" class="form-input" list="spec-list" value="${filters.species}"><datalist id="spec-list"></datalist></div>
-                    <div class="form-group mb-0 w-1/3"><label class="form-label">方法</label><select id="c-meth" class="form-select"><option value="all">全て</option><option value="trap">罠</option><option value="gun">銃</option></select></div>
-                </div>
-            </div>`;
-    }
-
-    app.innerHTML = `
-        <div class="space-y-2">
-            ${filterHTML}
-            <div id="catch-list" class="space-y-1"><p class="text-center text-gray-500 py-4">読み込み中...</p></div>
-        </div>
-    `;
-    
-    let title = '捕獲記録';
-    if(appState.currentCatchMethod === 'trap') title = '罠の捕獲記録';
-    if(appState.currentCatchMethod === 'gun') title = '銃の捕獲記録';
-    updateHeader(title, appState.currentCatchMethod !== 'all');
-    if (appState.currentCatchMethod !== 'all') {
-        backButton.onclick = () => appState.currentCatchMethod === 'trap' ? showTrapDetailPage(appState.currentCatchRelationId) : showGunLogDetailPage(appState.currentCatchRelationId);
-    }
-
-    if (appState.currentCatchMethod === 'all') {
-        loadSpeciesDataList();
-        document.getElementById('c-spec').onchange = (e) => { filters.species = e.target.value; renderCatchList(); };
-        document.getElementById('c-meth').onchange = (e) => { filters.method = e.target.value; renderCatchList(); };
-    }
-    renderCatchList();
-}
-
-async function loadSpeciesDataList() {
-    const animals = await db.game_animal_list.where('is_game_animal').equals('〇').toArray();
-    const names = [...new Set(animals.map(a=>a.species_name))];
-    document.getElementById('spec-list').innerHTML = names.map(n=>`<option value="${n}">`).join('');
-}
-
-async function renderCatchList() {
-    const listEl = document.getElementById('catch-list');
-    let records = await db.catch_records.orderBy('catch_date').reverse().toArray();
-    
-    if (appState.currentCatchMethod === 'trap') records = records.filter(r => r.trap_id === appState.currentCatchRelationId);
-    else if (appState.currentCatchMethod === 'gun') records = records.filter(r => r.gun_log_id === appState.currentCatchRelationId);
-    else {
-        const f = appState.catchFilters;
-        if(f.method === 'trap') records = records.filter(r => r.trap_id);
-        if(f.method === 'gun') records = records.filter(r => r.gun_log_id);
-        if(f.species) records = records.filter(r => r.species_name.includes(f.species));
-    }
-
-    if (records.length === 0) { listEl.innerHTML = '<p class="text-center text-gray-500">なし</p>'; return; }
-
-    listEl.innerHTML = records.map(r => {
-        const methodBadge = r.trap_id ? '<span class="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">罠</span>' : '<span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">銃</span>';
-        return `
-            <div class="trap-card bg-white" onclick="showCatchDetailPage(${r.id})">
-                <div>
-                    <h3 class="font-bold text-gray-800">${escapeHTML(r.species_name)}</h3>
-                    <p>${formatDate(r.catch_date)} ${r.gender||''} ${r.age||''}</p>
-                    <div class="mt-1">${methodBadge}</div>
-                </div>
-                <i class="fas fa-chevron-right text-gray-300"></i>
-            </div>`;
-    }).join('');
-}
-
-async function showCatchDetailPage(id) {
-    const r = await db.catch_records.get(id);
-    if (!r) return;
-    updateHeader('捕獲詳細', true);
-    backButton.onclick = () => showCatchListPage();
-
-    let methodInfo = '';
-    if (r.trap_id) {
-        const t = await db.trap.get(r.trap_id);
-        methodInfo = `<div class="card bg-white"><h2 class="text-lg font-semibold border-b pb-2 mb-2">捕獲方法: 罠</h2><button class="btn btn-secondary w-full text-left" onclick="showTrapDetailPage(${r.trap_id})">罠 No.${t?t.trap_number:'削除済'} を見る</button></div>`;
-    } else if (r.gun_log_id) {
-        const g = await db.gun_log.get(r.gun_log_id);
-        methodInfo = `<div class="card bg-white"><h2 class="text-lg font-semibold border-b pb-2 mb-2">捕獲方法: 銃</h2><button class="btn btn-secondary w-full text-left" onclick="showGunLogDetailPage(${r.gun_log_id})">使用履歴 (${g?formatDate(g.use_date):'削除済'}) を見る</button></div>`;
-    }
-
-    let imgHTML = '';
-    if(r.image_blob) {
-        const u = URL.createObjectURL(r.image_blob); appState.activeBlobUrls.push(u);
-        imgHTML = `<div class="card bg-white"><div class="photo-preview cursor-zoom-in"><img src="${u}" onclick="showImageModal(this.src)"></div></div>`;
-    }
-
-    let info = `<div class="card bg-white"><h2 class="text-lg font-semibold border-b pb-2 mb-4">データ</h2><table class="w-full text-sm"><tbody>`;
-    [['種名', r.species_name], ['日付', formatDate(r.catch_date)], ['性別', r.gender], ['年齢', r.age], ['緯度', r.latitude], ['経度', r.longitude], ['メモ', r.memo]].forEach(row => info += `<tr class="border-b"><th class="w-1/3 text-left py-1 text-gray-500">${row[0]}</th><td class="p-2">${escapeHTML(row[1])}</td></tr>`);
-    info += '</tbody></table></div>';
-
-    app.innerHTML = `<div class="space-y-2"><div class="flex gap-2"><button id="edit-c" class="btn btn-secondary flex-1">編集</button><button id="del-c" class="btn btn-danger flex-1">削除</button></div>${imgHTML}${info}${methodInfo}</div>`;
-
-    document.getElementById('edit-c').onclick = () => showCatchEditForm(id, {});
-    document.getElementById('del-c').onclick = async () => { if(confirm('削除しますか？')) { await db.catch_records.delete(id); showCatchListPage(); }};
-}
-
-async function showCatchEditForm(id, { trapId, gunLogId }) {
-    let r = { catch_date: new Date().toISOString().split('T')[0], species_name: '', gender: '不明', age: '不明', latitude: '', longitude: '', memo: '', image_blob: null };
-    if (id) r = await db.catch_records.get(id);
-    
-    if (!id && trapId) { const t = await db.trap.get(trapId); if(t) { r.latitude=t.latitude; r.longitude=t.longitude; } }
-    if (!id && gunLogId) { const g = await db.gun_log.get(gunLogId); if(g) { r.latitude=g.latitude; r.longitude=g.longitude; r.catch_date=g.use_date; } }
-
-    updateHeader(id?'捕獲記録 編集':'新規捕獲記録', true);
-    backButton.onclick = () => id ? showCatchDetailPage(id) : (trapId ? showTrapDetailPage(trapId) : (gunLogId ? showGunLogDetailPage(gunLogId) : showCatchListPage()));
-
-    let imgPreview = '';
-    if(r.image_blob) {
-        const u = URL.createObjectURL(r.image_blob); appState.activeBlobUrls.push(u);
-        imgPreview = `<div class="form-group"><label class="form-label">現在の写真:</label><div class="photo-preview"><img src="${u}"><button type="button" id="rm-img" class="photo-preview-btn-delete">&times;</button></div></div>`;
-    }
-
-    app.innerHTML = `
-        <div class="card bg-white">
-            <form id="catch-form" class="space-y-3">
-                <div class="form-group"><label class="form-label">日付</label><input type="date" id="c-date" class="form-input" value="${r.catch_date}" required></div>
-                <div class="form-group"><label class="form-label">種名</label><input id="c-spec" class="form-input" list="spec-list" value="${escapeHTML(r.species_name)}" required><datalist id="spec-list"></datalist></div>
-                <div class="flex gap-2">
-                    <div class="form-group flex-1"><label class="form-label">性別</label><select id="c-gen" class="form-select">${['不明','オス','メス'].map(v=>`<option ${v==r.gender?'selected':''}>${v}</option>`).join('')}</select></div>
-                    <div class="form-group flex-1"><label class="form-label">年齢</label><select id="c-age" class="form-select">${['不明','成獣','幼獣'].map(v=>`<option ${v==r.age?'selected':''}>${v}</option>`).join('')}</select></div>
-                </div>
-                <div class="form-group"><label class="form-label">位置</label><div class="flex gap-2"><input type="number" step="any" id="c-lat" class="form-input" value="${escapeHTML(r.latitude)}"><input type="number" step="any" id="c-lon" class="form-input" value="${escapeHTML(r.longitude)}"></div></div>
-                ${imgPreview}
-                <div class="form-group"><label class="form-label">写真</label><input type="file" id="c-img" class="form-input" accept="image/*"><div id="preview" class="mt-2"></div></div>
-                <div class="form-group"><label class="form-label">メモ</label><textarea id="c-memo" class="form-input">${escapeHTML(r.memo)}</textarea></div>
-                <button class="btn btn-primary w-full">保存</button>
-            </form>
-        </div>
-    `;
-    loadSpeciesDataList();
-    if(document.getElementById('rm-img')) document.getElementById('rm-img').onclick = function(){ this.closest('.form-group').remove(); r.image_blob = null; };
-    
-    let resizedBlob = null;
-    document.getElementById('c-img').onchange = async (e) => {
-        if(!e.target.files[0]) return;
-        resizedBlob = await resizeImage(e.target.files[0]);
-        const u = URL.createObjectURL(resizedBlob); appState.activeBlobUrls.push(u);
-        document.getElementById('preview').innerHTML = `<div class="photo-preview"><img src="${u}"></div>`;
-    };
-
-    document.getElementById('catch-form').onsubmit = async (e) => {
-        e.preventDefault();
-        const d = {
-            catch_date: document.getElementById('c-date').value,
-            species_name: document.getElementById('c-spec').value,
-            gender: document.getElementById('c-gen').value,
-            age: document.getElementById('c-age').value,
-            latitude: document.getElementById('c-lat').value,
-            longitude: document.getElementById('c-lon').value,
-            memo: document.getElementById('c-memo').value,
-            image_blob: r.image_blob,
-            trap_id: id ? r.trap_id : trapId,
-            gun_log_id: id ? r.gun_log_id : gunLogId
-        };
-        if(resizedBlob) d.image_blob = resizedBlob;
-        
-        if(id) { await db.catch_records.update(id, d); showCatchDetailPage(id); }
-        else { const nid = await db.catch_records.add(d); showCatchDetailPage(nid); }
-    };
-}
-
-
-// ----------------------------------------------------------------------------
-// 6. チェックリスト機能 (UI改善)
-// ----------------------------------------------------------------------------
-
-function showChecklistPage() { navigateTo('checklist', renderChecklistSets, 'チェックリスト一覧'); }
-
-async function renderChecklistSets() {
-    updateHeader('チェックリスト一覧', false);
-    app.innerHTML = `
-        <div class="space-y-2">
-            <div class="card bg-white"><form id="add-set-form" class="flex gap-2"><input id="new-set-name" class="form-input" placeholder="例: 単独猟" required><button class="btn btn-primary">作成</button></form></div>
-            <div id="set-list" class="space-y-1"></div>
-        </div>
-    `;
-    
-    const sets = await db.checklist_sets.toArray();
-    document.getElementById('set-list').innerHTML = sets.map(s => `
-        <div class="trap-card bg-white" onclick="showChecklistDetail(${s.id})">
-            <h3 class="text-lg font-semibold">${escapeHTML(s.name)}</h3>
-            <div class="flex items-center gap-2"><button class="btn btn-danger btn-sm del-set" data-id="${s.id}">削除</button><span>&gt;</span></div>
-        </div>
-    `).join('');
-
-    document.getElementById('set-list').querySelectorAll('.trap-card').forEach(d => {
-        if(d.tagName === 'BUTTON') return; // 削除ボタン回避
-        d.onclick = (e) => { if(!e.target.classList.contains('del-set')) showChecklistDetail(parseInt(d.dataset.id)); };
-    });
-    document.querySelectorAll('.del-set').forEach(b => b.onclick = async (e) => {
-        e.stopPropagation();
-        if(confirm('削除しますか？')) {
-            const id = parseInt(e.target.dataset.id);
-            await db.checklist_items.where('list_id').equals(id).delete();
-            await db.checklist_sets.delete(id);
-            renderChecklistSets();
+        class DataManager {
+            constructor() {
+                this.STORAGE_KEY = 'lure_hangar_v2_1_data';
+                this.data = this.load() || this.getInitialData();
+                if(!this.data.master.hooks) { this.data.master.hooks = ['#14', '#12', '#10', '#8', '#6', '#5', '#4', '#3', '#2', '#1', '1/0', '2/0', '3/0', '4/0', '5/0']; this.save(); }
+                if(!this.data.settings) { this.data.settings = { fontSize: 'medium', bgColor: '#f3f4f6' }; this.save(); }
+            }
+            getInitialData() {
+                return {
+                    boxes: [], lures: [],
+                    master: {
+                        manufacturers: ['Daiwa', 'Shimano'], types: ['ミノー', 'ペンシル', 'ポッパー', 'クランク', 'バイブレーション', 'スピナー', 'スプーン', 'ジグ'],
+                        sinkTypes: ['F (フローティング)', 'S (シンキング)', 'SP (サスペンド)', 'HS (ヘビーシンキング)'],
+                        fields: ['渓流', 'リバー', 'サーフ', 'ロック', 'ショア', 'オフショア'], targets: ['トラウト', 'バス', 'シーバス', 'フラット', 'メバル', '青物', 'ロックフィッシュ'],
+                        hooks: ['#14', '#12', '#10', '#8', '#6', '#5', '#4', '#3', '#2', '#1', '1/0', '2/0', '3/0', '4/0', '5/0']
+                    },
+                    settings: { fontSize: 'medium', bgColor: '#f3f4f6' }
+                };
+            }
+            load() { const j = localStorage.getItem(this.STORAGE_KEY); return j ? JSON.parse(j) : null; }
+            save() { try { localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.data)); } catch (e) { alert('容量オーバーです。'); } }
+            addBox(b) { this.data.boxes.unshift(b); this.save(); }
+            updateBox(b) { const i = this.data.boxes.findIndex(x => x.id === b.id); if (i !== -1) this.data.boxes[i] = b; this.save(); }
+            deleteBox(id) { this.data.boxes = this.data.boxes.filter(b => b.id !== id); this.data.lures = this.data.lures.filter(l => l.boxId !== id); this.save(); }
+            getBox(id) { return this.data.boxes.find(b => b.id === id); }
+            reorderBoxes(newOrderIds) {
+                const newBoxes = [];
+                newOrderIds.forEach(id => { const box = this.data.boxes.find(b => b.id === id); if (box) newBoxes.push(box); });
+                this.data.boxes = newBoxes; this.save();
+            }
+            getAllTags() { const t = new Set(); this.data.boxes.forEach(b => (b.tags || []).forEach(x => t.add(x))); return Array.from(t).sort(); }
+            addLure(l) { this.data.lures.push(l); this.save(); }
+            updateLure(l) { const i = this.data.lures.findIndex(x => x.id === l.id); if (i !== -1) this.data.lures[i] = l; this.save(); }
+            deleteLure(id) { this.data.lures = this.data.lures.filter(l => l.id !== id); this.save(); }
+            getLuresByBoxId(id) { return this.data.lures.filter(l => l.boxId === id); }
+            getAllLures() { return this.data.lures; }
+            updateMaster(k, l) { if (this.data.master[k]) this.data.master[k] = l; this.save(); }
+            updateSettings(s) { this.data.settings = { ...this.data.settings, ...s }; this.save(); }
+            exportData() { const b = new Blob([JSON.stringify(this.data)], { type: "application/json" }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `lure_hangar_backup_${new Date().toISOString().slice(0, 10)}.json`; a.click(); }
+            importData(s) { try { const p = JSON.parse(s); if (p.boxes && p.lures) { this.data = p; this.save(); return true; } } catch (e) { } return false; }
         }
-    });
 
-    document.getElementById('add-set-form').onsubmit = async (e) => {
-        e.preventDefault();
-        try { await db.checklist_sets.add({name: document.getElementById('new-set-name').value}); renderChecklistSets(); } catch { alert('作成失敗'); }
-    };
-}
-
-async function showChecklistDetail(id) {
-    const set = await db.checklist_sets.get(id);
-    let mode = 'check'; // check or edit
-    
-    const render = async () => {
-        updateHeader(set.name, true);
-        backButton.onclick = showChecklistPage;
-        const items = await db.checklist_items.where('list_id').equals(id).toArray();
-        
-        let html = `
-            <div class="sub-tab-container">
-                <div id="tab-check" class="sub-tab-btn ${mode==='check'?'active':''}">チェック</div>
-                <div id="tab-edit" class="sub-tab-btn ${mode==='edit'?'active':''}">項目管理</div>
-            </div>
-        `;
-
-        if(mode === 'check') {
-            html += `
-                <div class="card p-2"><button id="reset" class="btn btn-secondary w-full">チェックをリセット</button></div>
-                <div class="space-y-1">
-                    ${items.map(i => `
-                        <div class="card flex items-center p-2 cursor-pointer row" data-id="${i.id}">
-                            <div class="w-6 h-6 border rounded mr-2 flex items-center justify-center ${i.is_checked?'bg-blue-600 border-blue-600 text-white':''}">${i.is_checked?'✓':''}</div>
-                            <span class="${i.is_checked?'text-gray-400 line-through':''} checklist-item">${escapeHTML(i.name)}</span>
-                        </div>`).join('')}
-                </div>`;
-        } else {
-            html += `
-                <div class="card p-2 flex gap-2"><input id="new-item" class="form-input" placeholder="項目名"><button id="add-item" class="btn btn-primary">追加</button></div>
-                <div class="space-y-1">
-                    ${items.map(i => `<div class="card flex justify-between p-2"><span>${escapeHTML(i.name)}</span><button class="btn btn-sm btn-danger del-item" data-id="${i.id}">×</button></div>`).join('')}
-                </div>`;
-        }
-        app.innerHTML = html;
-
-        document.getElementById('tab-check').onclick = () => { mode='check'; render(); };
-        document.getElementById('tab-edit').onclick = () => { mode='edit'; render(); };
-
-        if(mode==='check') {
-            document.getElementById('reset').onclick = async () => { await db.checklist_items.where('list_id').equals(id).modify({is_checked:false}); render(); };
-            document.querySelectorAll('.row').forEach(r => r.onclick = async (e) => {
-                const i = items.find(x => x.id === parseInt(e.currentTarget.dataset.id));
-                await db.checklist_items.update(i.id, {is_checked: !i.is_checked});
-                render();
-            });
-        } else {
-            document.getElementById('add-item').onclick = async () => { await db.checklist_items.add({list_id:id, name:document.getElementById('new-item').value, is_checked:false}); render(); };
-            document.querySelectorAll('.del-item').forEach(b => b.onclick = async (e) => { await db.checklist_items.delete(parseInt(e.target.dataset.id)); render(); });
-        }
-    };
-    render();
-}
-
-
-// ----------------------------------------------------------------------------
-// 7. 情報 (図鑑・プロフィール) (UI改善)
-// ----------------------------------------------------------------------------
-
-function showInfoPage() {
-    navigateTo('info', renderInfoTopPage, '情報');
-}
-
-function renderInfoTopPage() {
-    updateHeader('情報', false);
-    app.innerHTML = `
-        <div class="space-y-2">
-            <div class="card flex items-center gap-3 p-3 cursor-pointer" onclick="showGameAnimalListPage()">
-                <div class="bg-green-100 p-2 rounded text-green-600 text-xl"><i class="fas fa-book"></i></div>
-                <div><h3 class="font-bold">狩猟鳥獣図鑑</h3><p class="text-xs text-gray-500">生態・被害・特徴</p></div>
-                <i class="fas fa-chevron-right ml-auto text-gray-300"></i>
-            </div>
-            <div class="card flex items-center gap-3 p-3 cursor-pointer" onclick="showHunterProfilePage()">
-                <div class="bg-blue-100 p-2 rounded text-blue-600 text-xl"><i class="fas fa-id-card"></i></div>
-                <div><h3 class="font-bold">捕獲者情報</h3><p class="text-xs text-gray-500">許可証管理</p></div>
-                <i class="fas fa-chevron-right ml-auto text-gray-300"></i>
-            </div>
-        </div>
-    `;
-}
-
-// 図鑑一覧
-async function showGameAnimalListPage() {
-    if (!appState.infoSort) appState.infoSort = 'default';
-    if (!appState.infoFilterAttribute) appState.infoFilterAttribute = 'all';
-    updateHeader('狩猟鳥獣図鑑', true);
-    backButton.onclick = () => showInfoPage();
-
-    app.innerHTML = `
-        <div class="space-y-2">
-            <div class="card bg-white p-2">
-                <div class="grid grid-cols-2 gap-2 mb-2">
-                    <div class="form-group mb-0">
-                        <label class="form-label">並び替え:</label>
-                        <select id="info-sort" class="form-select">
-                            <option value="default">標準 (CSV順)</option>
-                            <option value="name">あいうえお順</option>
-                        </select>
-                    </div>
-                    <div class="form-group mb-0">
-                        <label class="form-label">属性:</label>
-                        <select id="info-filter-attribute" class="form-select">
-                            <option value="all">すべて表示</option>
-                            <option value="game_animal">狩猟鳥獣</option>
-                            <option value="invasive">外来種</option>
-                            <option value="mammal">哺乳類</option>
-                            <option value="bird">鳥類</option>
-                            <option value="gun">銃猟</option>
-                            <option value="trap">罠猟</option>
-                            <option value="net">網猟</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="card p-2 flex gap-2"><input id="search" class="form-input" placeholder="名前で検索..."></div>
-                <div id="ga-list" class="space-y-1"><p class="text-center py-4">読み込み中...</p></div>
-            </div>
-        </div>`;
-    
-    document.getElementById('info-sort').value = appState.infoSort;
-    document.getElementById('info-filter-attribute').value = appState.infoFilterAttribute;
-
-    document.getElementById('info-sort').addEventListener('change', (e) => { appState.infoSort = e.target.value; renderGAList(); });
-    document.getElementById('info-filter-attribute').addEventListener('change', (e) => { appState.infoFilterAttribute = e.target.value; renderGAList(); });
-    document.getElementById('search').oninput = (e) => { renderGAList(e.target.value); };
-
-    renderGAList();
-}
-
-async function renderGAList(searchTerm = '') {
-    const listEl = document.getElementById('ga-list');
-    let animals = await db.game_animal_list.toArray();
-    const attr = appState.infoFilterAttribute;
-    
-    if (attr !== 'all') {
-        animals = animals.filter(a => {
-            if (attr === 'game_animal') return a.is_game_animal === '〇';
-            if (attr === 'invasive') return a.notes && a.notes.includes('外来');
-            if (attr === 'mammal') return a.category === '哺乳類';
-            if (attr === 'bird') return a.category === '鳥類';
-            if (attr === 'gun') return ['○', '〇', '◎'].includes(a.method_gun);
-            if (attr === 'trap') return ['○', '〇', '◎'].includes(a.method_trap);
-            if (attr === 'net') return ['○', '〇', '◎'].includes(a.method_net);
-            return true;
-        });
-    }
-    if (searchTerm) {
-        animals = animals.filter(a => a.species_name.includes(searchTerm));
-    }
-
-    if (appState.infoSort === 'name') animals.sort((a, b) => a.species_name.localeCompare(b.species_name, 'ja'));
-    else animals.sort((a, b) => a.id - b.id);
-
-    if(animals.length === 0) { listEl.innerHTML = '<p class="text-center">該当なし</p>'; return; }
-
-    listEl.innerHTML = animals.map(a => {
-        let badges = '';
-        if (a.category === '哺乳類') badges += `<span class="badge" style="background:#fef3c7;color:#92400e;">哺乳類</span>`;
-        if (a.category === '鳥類') badges += `<span class="badge" style="background:#e0f2fe;color:#075985;">鳥類</span>`;
-        if (a.is_game_animal === '〇') badges += `<span class="badge" style="background:#dcfce7;color:#166534;">狩猟鳥獣</span>`;
-        
-        const img = a.image_1 ? `<img src="./image/${escapeHTML(a.image_1)}" class="animal-thumb">` : `<div class="w-full h-full bg-gray-100 flex items-center justify-center text-gray-300"><i class="fas fa-paw"></i></div>`;
-        return `
-            <div class="animal-card bg-white" onclick="showGameAnimalDetail(${a.id})">
-                <div class="flex items-center gap-2">
-                    <div class="w-12 h-12 bg-gray-100 rounded overflow-hidden flex-shrink-0">
-                        ${a.image_1 ? `<img src="./image/${escapeHTML(a.image_1)}" class="w-full h-full object-cover">` : '<i class="fas fa-paw text-gray-300 m-auto"></i>'}
-                    </div>
-                    <div>
-                        <h3 class="font-bold">${escapeHTML(a.species_name)}</h3>
-                        <div class="flex gap-1">${badges}</div>
-                    </div>
-                </div>
-                <i class="fas fa-chevron-right text-gray-300"></i>
-            </div>`;
-    }).join('');
-}
-
-async function showGameAnimalDetail(id) {
-    const a = await db.game_animal_list.get(id);
-    if (!a) return;
-    updateHeader(a.species_name, true);
-    backButton.onclick = () => showGameAnimalListPage();
-    
-    let imgs = '';
-    if(a.image_1) imgs += `<img src="./image/${escapeHTML(a.image_1)}" class="w-full h-48 object-cover rounded mb-1">`;
-    if(a.image_2) imgs += `<img src="./image/${escapeHTML(a.image_2)}" class="w-full h-48 object-cover rounded">`;
-
-    // 区分ロジック
-    let methods = [];
-    if(a.is_game_animal === '〇') {
-        const s = ['○', '〇', '◎'];
-        if(s.includes(a.method_gun)) methods.push('銃');
-        if(s.includes(a.method_trap)) methods.push('罠');
-        if(s.includes(a.method_net)) methods.push('網');
-    }
-    const statusVal = methods.length > 0 ? methods.join('・') : (a.is_game_animal === '〇' ? '狩猟鳥獣' : '非狩猟鳥獣');
-    const genderVal = (a.gender && a.gender.includes('オスのみ')) ? a.gender : null;
-    let prohibitedVal = a.prohibited_area;
-    if (!prohibitedVal || prohibitedVal === 'nan' || prohibitedVal === '-') prohibitedVal = null;
-
-    app.innerHTML = `
-        <div class="space-y-2">
-            ${imgs ? `<div class="card p-1">${imgs}</div>` : ''}
-            <div class="card"><h3 class="font-bold border-b mb-1">生態</h3><p class="text-sm">${a.ecology||'-'}</p></div>
-            <div class="card"><h3 class="font-bold border-b mb-1">被害・特徴</h3><p class="text-sm">${a.damage||'-'}</p></div>
-            <div class="card">
-                <h3 class="font-bold border-b mb-1">データ</h3>
-                <table class="w-full text-sm">
-                    <tr><th class="text-left w-1/3 text-gray-500">狩猟</th><td>${statusVal}</td></tr>
-                    ${genderVal ? `<tr><th class="text-left text-gray-500">性別制限</th><td>${genderVal}</td></tr>` : ''}
-                    <tr><th class="text-left text-gray-500">制限</th><td>${a.count||'-'}</td></tr>
-                    ${prohibitedVal ? `<tr><th class="text-left text-gray-500">狩猟禁止区域</th><td>${prohibitedVal}</td></tr>` : ''}
-                    <tr><th class="text-left text-gray-500">生息地</th><td>${a.habitat||'-'}</td></tr>
-                    <tr><th class="text-left text-gray-500">備考</th><td>${a.notes||'-'}</td></tr>
-                </table>
-            </div>
-        </div>
-    `;
-}
-
-// プロフィール (項目別保存版)
-async function showHunterProfilePage() {
-    updateHeader('登録情報', true);
-    backButton.onclick = () => showInfoPage();
-    
-    const p = await db.hunter_profile.get('main') || {};
-    const imgs = await db.profile_images.toArray();
-    const fields = [{k:'name',l:'氏名'},{k:'gun_license_renewal',l:'銃所持許可'},{k:'hunting_license_renewal',l:'狩猟免状'},{k:'registration_renewal',l:'登録証'},{k:'explosives_permit_renewal',l:'火薬許可'}];
-
-    app.innerHTML = `
-        <div class="space-y-2">
-            <div class="card text-right py-1"><button id="edit" class="text-blue-600 text-sm">編集モードへ</button></div>
-            ${fields.map(f => {
-                const myImgs = imgs.filter(i=>i.type===f.k);
-                let imgHTML = '';
-                if(myImgs.length) {
-                    imgHTML = `<div class="flex gap-1 mt-1 overflow-x-auto">` + myImgs.map(i=>{
-                        const u = URL.createObjectURL(i.image_blob); appState.activeBlobUrls.push(u);
-                        return `<img src="${u}" class="h-12 w-12 rounded border object-cover" onclick="showImageModal(this.src)">`;
-                    }).join('') + `</div>`;
+        class AppRouter {
+            constructor(ui) { this.ui = ui; this.currentRoute = 'home'; }
+            navigate(r, p = null) {
+                this.currentRoute = r;
+                document.querySelectorAll('.nav-btn').forEach(b => {
+                    if (b.dataset.target === r) { b.classList.add('text-blue-600'); b.classList.remove('text-gray-500'); }
+                    else if (['home', 'analysis', 'notes', 'settings'].includes(b.dataset.target)) { b.classList.remove('text-blue-600'); b.classList.add('text-gray-500'); }
+                });
+                const c = document.getElementById('main-content'); c.innerHTML = '';
+                switch (r) {
+                    case 'home': this.ui.renderHome(c); break;
+                    case 'boxDetail': this.ui.renderBoxDetail(c, p); break;
+                    case 'analysis': this.ui.renderAnalysis(c); break;
+                    case 'notes': this.ui.renderNotes(c); break;
+                    case 'settings': this.ui.renderSettings(c); break;
                 }
-                return `<div class="card"><div class="flex justify-between"><span class="text-gray-500 text-sm">${f.l}</span><span class="font-bold">${escapeHTML(p[f.k]||'')}</span></div>${imgHTML}</div>`;
-            }).join('')}
-        </div>
-    `;
-    document.getElementById('edit').onclick = () => showHunterProfileEdit();
-}
-
-async function showHunterProfileEdit() {
-    updateHeader('情報編集', true);
-    backButton.onclick = () => showHunterProfilePage();
-    
-    const p = await db.hunter_profile.get('main') || {key:'main'};
-    const imgs = await db.profile_images.toArray();
-    const fields = [{k:'name',l:'氏名'},{k:'gun_license_renewal',l:'銃所持許可'},{k:'hunting_license_renewal',l:'狩猟免状'},{k:'registration_renewal',l:'登録証'},{k:'explosives_permit_renewal',l:'火薬許可'}];
-
-    app.innerHTML = `<div id="editor" class="space-y-2"></div><input type="file" id="file" hidden>`;
-    const editor = document.getElementById('editor');
-    const fileIn = document.getElementById('file');
-    let targetKey = null;
-
-    fields.forEach(f => {
-        const myImgs = imgs.filter(i=>i.type===f.k);
-        let imgHTML = myImgs.map(i => {
-            const u = URL.createObjectURL(i.image_blob); appState.activeBlobUrls.push(u);
-            return `<div class="relative inline-block mr-1"><img src="${u}" class="h-12 w-12 rounded object-cover"><button class="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 text-xs flex items-center justify-center del-img" data-id="${i.id}">×</button></div>`;
-        }).join('');
-
-        const div = document.createElement('div');
-        div.className = 'card';
-        div.innerHTML = `
-            <label class="form-label">${f.l}</label>
-            <div class="flex gap-2 mb-2"><input id="in-${f.k}" class="form-input flex-1" value="${escapeHTML(p[f.k]||'')}"><button class="btn btn-primary w-16 save" data-key="${f.k}">保存</button></div>
-            <div class="flex items-center flex-wrap">${imgHTML}<button class="btn btn-secondary btn-sm h-12 w-12 flex flex-col items-center justify-center text-xs add-img" data-key="${f.k}"><i class="fas fa-camera"></i></button></div>
-        `;
-        editor.appendChild(div);
-    });
-
-    editor.querySelectorAll('.save').forEach(b => b.onclick = async (e) => {
-        const k = e.target.dataset.key;
-        p[k] = document.getElementById(`in-${k}`).value;
-        await db.hunter_profile.put(p);
-        e.target.textContent='OK'; setTimeout(()=>e.target.textContent='保存',1000);
-    });
-    editor.querySelectorAll('.add-img').forEach(b => b.onclick = (e) => { targetKey=e.currentTarget.dataset.key; fileIn.click(); });
-    editor.querySelectorAll('.del-img').forEach(b => b.onclick = async (e) => { await db.profile_images.delete(parseInt(e.target.dataset.id)); showHunterProfileEdit(); });
-
-    fileIn.onchange = async (e) => {
-        if(e.target.files[0]) {
-            const b = await resizeImage(e.target.files[0]);
-            await db.profile_images.add({type:targetKey, image_blob:b});
-            showHunterProfileEdit();
+            }
         }
-        fileIn.value = '';
-    };
-}
 
+        class UIManager {
+            constructor(db) { 
+                this.db = db; 
+                this.chartInstance = null; 
+                this.analysisMode = 'spec'; 
+                this.analysisFilterTag = 'all';
+                this.analysisFishTarget = 'all';
+                this.applyTheme(); 
+            }
+            applyTheme() {
+                const s = this.db.data.settings; const r = document.documentElement; r.style.setProperty('--app-bg-color', s.bgColor);
+                let scale = '100%'; 
+                if (s.fontSize === 'small') scale = '85%'; 
+                if (s.fontSize === 'large') scale = '115%';
+                if (s.fontSize === 'x-small') scale = '75%';
+                r.style.setProperty('--app-font-scale', scale);
+            }
+            renderHome(c) {
+                document.getElementById('header-actions').innerHTML = `<button onclick="ui.openBoxModal()" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-full text-sm font-bold shadow"><i class="fa-solid fa-plus mr-1"></i>BOX追加</button>`;
+                c.innerHTML = ''; const boxes = this.db.data.boxes;
+                if (boxes.length === 0) { c.innerHTML = '<div class="flex flex-col items-center justify-center h-64 text-gray-400"><i class="fa-solid fa-box-open text-6xl mb-4"></i><p>ボックスが登録されていません</p></div>'; return; }
+                const grid = document.createElement('div'); grid.id = 'box-list-grid'; grid.className = 'grid grid-cols-2 gap-4 pb-20';
+                boxes.forEach(b => {
+                    const lures = this.db.getLuresByBoxId(b.id);
+                    const typeCount = lures.length; const totalCount = lures.reduce((sum, l) => sum + (Number(l.count) || 0), 0);
+                    const el = document.createElement('div');
+                    el.className = 'bg-white rounded-lg shadow overflow-hidden relative group cursor-pointer active:scale-95 transition-transform duration-100 touch-manipulation select-none';
+                    el.dataset.id = b.id; 
+                    // クリックイベントの代わりにSortableJSのonEnd等で処理するため、onclickは保持しつつ、ドラッグとの競合を防ぐ
+                    el.onclick = (e) => {
+                        // ドラッグ中なら遷移しない簡単な判定を入れる
+                        if(el.classList.contains('sortable-drag')) return;
+                        router.navigate('boxDetail', b.id);
+                    };
+                    el.innerHTML = `<div class="aspect-square bg-gray-200 relative pointer-events-none">${b.image ? `<img src="${b.image}" class="w-full h-full object-cover pointer-events-none">` : `<div class="w-full h-full flex items-center justify-center text-gray-400"><i class="fa-solid fa-image text-3xl"></i></div>`}<div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2 pt-6">${b.note ? `<div class="text-white text-xs font-bold truncate mb-1">${b.note}</div>` : ''}<div class="flex gap-1 flex-wrap h-5 overflow-hidden">${(b.tags || []).slice(0, 3).map(t => `<span class="bg-blue-500/80 text-[8px] text-white px-2 py-0.5 rounded inline-flex items-center justify-center">${Utils.simplifyType(t)}</span>`).join('')}</div></div><div class="absolute top-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full shadow-sm">${totalCount}個/${typeCount}種類</div></div>`;
+                    grid.appendChild(el);
+                });
+                c.appendChild(grid);
+                Sortable.create(grid, { 
+                    animation: 150, 
+                    delay: 300, 
+                    delayOnTouchOnly: true, 
+                    touchStartThreshold: 5, 
+                    ghostClass: 'sortable-ghost', 
+                    chosenClass: 'sortable-chosen', 
+                    dragClass: 'sortable-drag',
+                    forceFallback: true, // スマホでの挙動安定のためFallbackを有効化
+                    fallbackTolerance: 5,
+                    onEnd: (evt) => { const newOrder = Array.from(grid.children).map(child => child.dataset.id); this.db.reorderBoxes(newOrder); } 
+                });
+            }
+            renderBoxDetail(c, bid) {
+                const b = this.db.getBox(bid); if (!b) return router.navigate('home');
+                document.getElementById('header-actions').innerHTML = `
+                    <button onclick="router.navigate('home')" class="bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded text-xs transition flex items-center gap-1 border border-white/20 whitespace-nowrap"><i class="fa-solid fa-arrow-left"></i> 戻る</button>`;
+                
+                let ls = [...this.db.getLuresByBoxId(bid)];
+                if (this.boxSortKey === 'sizeDesc') ls.sort((a, b) => (b.length || 0) - (a.length || 0));
+                if (this.boxSortKey === 'sizeAsc') ls.sort((a, b) => (a.length || 0) - (b.length || 0));
+                if (this.boxSortKey === 'weightDesc') ls.sort((a, b) => (b.weight || 0) - (a.weight || 0));
+                if (this.boxSortKey === 'nameAsc') ls.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-// ----------------------------------------------------------------------------
-// 8. 設定機能
-// ----------------------------------------------------------------------------
+                c.innerHTML = `
+                    <div class="bg-white rounded-lg shadow mb-6 overflow-hidden">
+                        <div class="h-48 bg-gray-200 relative group">${b.image ? `<img src="${b.image}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center"><i class="fa-solid fa-image text-4xl text-gray-300"></i></div>`}</div>
+                        <div class="p-4">
+                            <div class="flex justify-between items-start mb-2">
+                                <h2 class="font-bold text-lg leading-tight mr-2">${b.note || '名称未設定'}</h2>
+                                <div class="flex gap-3 shrink-0">
+                                    <button onclick="ui.openBoxModal('${bid}')" class="text-gray-400 hover:text-blue-600 transition"><i class="fa-solid fa-pen-to-square text-lg"></i></button>
+                                    <button onclick="ui.deleteBox('${bid}')" class="text-gray-400 hover:text-red-500 transition"><i class="fa-solid fa-trash text-lg"></i></button>
+                                </div>
+                            </div>
+                            <div class="flex gap-1 flex-wrap mb-2">${(b.tags || []).map(t => `<span class="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded inline-flex items-center justify-center border border-gray-200">${Utils.simplifyType(t)}</span>`).join('')}</div>
+                            <p class="text-xs text-gray-500 text-right">最終編集日: ${Utils.formatDate(b.lastModified || b.timestamp)}</p>
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="font-bold text-gray-700">登録ルアー (${ls.length})</h3>
+                        <div class="flex gap-2">
+                            <select class="text-xs border rounded bg-white p-1" onchange="ui.setBoxSort(this.value, '${bid}')"><option value="default" ${this.boxSortKey === 'default' ? 'selected' : ''}>登録順</option><option value="sizeDesc" ${this.boxSortKey === 'sizeDesc' ? 'selected' : ''}>大きい順</option><option value="sizeAsc" ${this.boxSortKey === 'sizeAsc' ? 'selected' : ''}>小さい順</option><option value="weightDesc" ${this.boxSortKey === 'weightDesc' ? 'selected' : ''}>重い順</option><option value="nameAsc" ${this.boxSortKey === 'nameAsc' ? 'selected' : ''}>名前順</option></select>
+                            <button onclick="ui.openLureForm('${bid}')" class="bg-blue-600 text-white text-xs px-3 py-2 rounded shadow hover:bg-blue-700"><i class="fa-solid fa-plus mr-1"></i>追加</button>
+                        </div>
+                    </div>
+                    <div class="space-y-2 pb-24">
+                        ${ls.map(l => {
+                            const isLost = l.status === 'ロスト';
+                            const depthLabel = (l.sinkType && (l.sinkType.includes('S') || l.sinkType.includes('HS'))) ? (l.sinkRate ? `${l.sinkRate}m/s` : '') : (l.depth ? `${l.depth}m` : '');
+                            let borderClass = 'border-blue-500'; 
+                            if (l.rank === '1軍') borderClass = 'border-yellow-500';
+                            else if (l.rank === '2軍') borderClass = 'border-gray-400';
+                            else if (l.rank === '3軍') borderClass = 'border-orange-700';
 
-function showSettingsPage() {
-    updateHeader('設定', false);
-    app.innerHTML = `
-        <div class="space-y-2">
-            <div class="card bg-white"><h2 class="text-lg font-semibold border-b pb-2 mb-4">使用方法</h2>
-                <div class="space-y-2">
-                    <details class="text-sm"><summary class="text-md font-semibold cursor-pointer select-none">⛓️ 罠タブ</summary><div class="mt-2 pt-2 border-t text-gray-700">罠の設置・管理・捕獲記録を行います。</div></details>
-                    <details class="text-sm"><summary class="text-md font-semibold cursor-pointer select-none">🔫 銃タブ</summary><div class="mt-2 pt-2 border-t text-gray-700">銃と弾の管理、発砲履歴の記録を行います。</div></details>
-                    <details class="text-sm"><summary class="text-md font-semibold cursor-pointer select-none">🦌 捕獲タブ</summary><div class="mt-2 pt-2 border-t text-gray-700">全ての捕獲記録を一覧表示・検索します。</div></details>
-                    <details class="text-sm"><summary class="text-md font-semibold cursor-pointer select-none">✅ チェックタブ</summary><div class="mt-2 pt-2 border-t text-gray-700">持ち物リストなどを作成し、出猟前にチェックできます。</div></details>
-                    <details class="text-sm"><summary class="text-md font-semibold cursor-pointer select-none">📖 情報タブ</summary><div class="mt-2 pt-2 border-t text-gray-700">鳥獣図鑑（生態・被害）の閲覧や、許可証期限・写真の管理ができます。</div></details>
-                </div>
-            </div>
-            <div class="card bg-white"><h2 class="text-lg font-semibold border-b pb-2 mb-4">表示設定</h2>
-                <div class="form-group"><label class="form-label">背景色:</label><select id="st-theme" class="form-select"><option value="light">ライト</option><option value="sepia">セピア</option><option value="lightgreen">緑</option><option value="lightblue">ブルー</option></select></div>
-                <div class="form-group"><label class="form-label">文字サイズ:</label><select id="st-size" class="form-select"><option value="xsmall">極小</option><option value="small">小</option><option value="medium">中</option><option value="large">大</option><option value="xlarge">特大</option></select></div>
-            </div>
-            <div class="card bg-white"><h2 class="text-lg font-semibold border-b pb-2 mb-4">データ管理</h2>
-                <button id="exp-btn" class="btn btn-primary w-full mb-2">バックアップ (保存)</button>
-                <button id="imp-btn" class="btn btn-danger w-full">復元 (読込)</button>
-                <input type="file" id="imp-file" style="display:none">
-                <hr class="my-4">
-                <button id="csv-gun" class="btn btn-secondary w-full mb-2">銃履歴CSV出力</button>
-                <button id="csv-catch" class="btn btn-secondary w-full mb-2">捕獲記録CSV出力</button>
-                <hr class="my-2">
-                <button id="upd-dic" class="btn btn-secondary w-full">図鑑データをCSVから更新</button>
-                <p id="csv-st" class="text-sm text-center text-gray-500 h-4"></p>
-            </div>
-            <div class="card bg-white border border-yellow-300"><h2 class="text-lg font-semibold border-b pb-2 mb-4 text-yellow-700">システム</h2>
-                <button id="sys-upd" class="btn btn-warning w-full font-bold">アプリを最新に更新</button>
-            </div>
-        </div>
-    `;
+                            return `<div class="bg-white px-3 py-2 rounded shadow-sm border-l-4 ${isLost ? 'border-gray-400 bg-gray-50 opacity-70' : borderClass} flex justify-between items-center" onclick="ui.openLureDetail('${l.id}')">
+                                <div>
+                                    <div class="text-[10px] text-gray-500 flex gap-2 leading-tight"><span>${l.maker}</span>${l.status && l.status !== '所持' ? `<span class="bg-gray-200 px-1 rounded text-[10px]">${l.status}</span>` : ''}</div>
+                                    <div class="font-bold text-xs ${isLost ? 'line-through text-gray-500' : ''} leading-tight my-0.5">${l.name}${l.achievements ? '<i class="fa-solid fa-star text-yellow-500 ml-1 text-[10px]"></i>' : ''}</div>
+                                    <div class="text-[10px] text-gray-600 space-x-1 leading-tight"><span class="bg-gray-100 px-1 rounded">${l.type}</span><span>${l.length}mm</span><span>${l.weight}g</span>${depthLabel ? `<span>${depthLabel}</span>` : ''}${l.hookSize ? `<span class="border border-gray-300 px-1 rounded">#${l.hookSize}</span>` : ''}</div>
+                                </div>
+                                <div class="text-right ml-2 shrink-0"><div class="text-[10px] font-bold bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded mb-0.5 inline-block">${Utils.simplifyType(l.sinkType)}</div><div class="text-[10px] text-gray-400">×${l.count}</div></div>
+                            </div>`
+                        }).join('')}
+                    </div>`;
+            }
+            setBoxSort(k, bid) { this.boxSortKey = k; this.renderBoxDetail(document.getElementById('main-content'), bid); }
+            
+            renderAnalysis(c) {
+                document.getElementById('header-actions').innerHTML = ''; const tags = this.db.getAllTags();
+                const allLures = this.db.getAllLures();
+                const totalCount = allLures.reduce((sum, l) => sum + (Number(l.count) || 0), 0);
+                const typeCount = allLures.length;
+                const achievementFishSet = new Set();
+                allLures.forEach(l => { if (l.achievements) { l.achievements.split(/[,、\s]+/).filter(s=>s.trim()).forEach(f => achievementFishSet.add(f.trim())); } });
+                const sortedFish = Array.from(achievementFishSet).sort();
 
-    document.getElementById('st-theme').onchange = async (e) => { await db.settings.put({key:'theme',value:e.target.value}); applyTheme(e.target.value); };
-    document.getElementById('st-size').onchange = async (e) => { await db.settings.put({key:'fontSize',value:e.target.value}); applyFontSize(e.target.value); };
-    
-    document.getElementById('exp-btn').onclick = exportAllData;
-    document.getElementById('imp-btn').onclick = () => document.getElementById('imp-file').click();
-    document.getElementById('imp-file').onchange = (e) => { if(e.target.files.length>0) importAllData(e.target.files[0]); };
-    
-    document.getElementById('csv-gun').onclick = exportGunLogsAsCSV;
-    document.getElementById('csv-catch').onclick = exportCatchesAsCSV;
-    document.getElementById('upd-dic').onclick = async () => {
-        if(confirm('図鑑を更新しますか？')) {
-            document.getElementById('csv-st').textContent = '更新中...';
-            try { await populateGameAnimalListIfNeeded(true); document.getElementById('csv-st').textContent = '完了'; } catch { document.getElementById('csv-st').textContent = '失敗'; }
+                c.innerHTML = `
+                    <div class="space-y-4 pb-20">
+                        <div class="bg-gradient-to-r from-blue-600 to-blue-400 rounded-lg shadow-lg p-4 text-white flex justify-around items-center">
+                            <div class="text-center"><div class="text-xs opacity-80 mb-1">登録ルアー総数</div><div class="text-3xl font-bold">${totalCount}<span class="text-sm font-normal ml-1">個</span></div></div>
+                            <div class="w-px h-10 bg-white/30"></div>
+                            <div class="text-center"><div class="text-xs opacity-80 mb-1">種類数</div><div class="text-3xl font-bold">${typeCount}<span class="text-sm font-normal ml-1">種</span></div></div>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg shadow">
+                            <h3 class="font-bold text-gray-700 mb-3 text-sm flex justify-between items-center"><span><i class="fa-solid fa-chart-pie mr-2"></i>分析チャート</span><select id="chart-mode" class="text-xs border rounded bg-gray-50 p-1" onchange="ui.changeChartMode(this.value)"><option value="spec" ${this.analysisMode === 'spec' ? 'selected' : ''}>スペック分布(散布図)</option><option value="type" ${this.analysisMode === 'type' ? 'selected' : ''}>種類別構成(棒)</option><option value="rank" ${this.analysisMode === 'rank' ? 'selected' : ''}>ランク割合(棒)</option><option value="achieve" ${this.analysisMode === 'achieve' ? 'selected' : ''}>釣果実績(円)</option></select></h3>
+                            <div class="mb-4 text-sm"><label class="block text-xs text-gray-500 mb-1">タグで絞り込み</label><select id="chart-filter" class="w-full bg-blue-50 border border-blue-200 rounded p-2 text-blue-900 font-bold" onchange="ui.updateChart()"><option value="all">すべてのルアーを表示</option>${tags.map(t => `<option value="${t}" ${this.analysisFilterTag === t ? 'selected' : ''}>${Utils.simplifyType(t)}</option>`).join('')}</select></div>
+                            <div id="chart-controls-spec" class="flex gap-2 mb-4 text-sm ${this.analysisMode !== 'spec' ? 'hidden' : ''}"><div class="flex-1"><label class="block text-xs text-gray-500 mb-1">X軸</label><select id="chart-x" class="w-full bg-gray-50 border rounded p-1" onchange="ui.updateChart()"><option value="length" selected>長さ (mm)</option><option value="weight">重さ (g)</option><option value="depth">潜行深度 (m)</option><option value="sinkRate">沈降速度 (m/s)</option></select></div><div class="flex-1"><label class="block text-xs text-gray-500 mb-1">Y軸</label><select id="chart-y" class="w-full bg-gray-50 border rounded p-1" onchange="ui.updateChart()"><option value="length">長さ (mm)</option><option value="weight" selected>重さ (g)</option><option value="depth">潜行深度 (m)</option><option value="sinkRate">沈降速度 (m/s)</option></select></div></div>
+                            <div id="chart-controls-achieve" class="mb-4 text-sm ${this.analysisMode !== 'achieve' ? 'hidden' : ''}"><label class="block text-xs text-gray-500 mb-1">分析対象の魚種</label><select id="chart-achieve-fish" class="w-full bg-yellow-50 border border-yellow-200 rounded p-2 text-yellow-900 font-bold" onchange="ui.updateChart()"><option value="all" ${this.analysisFishTarget === 'all' ? 'selected' : ''}>すべて（魚種内訳）</option>${sortedFish.map(f => `<option value="${f}" ${this.analysisFishTarget === f ? 'selected' : ''}>${f}</option>`).join('')}</select></div>
+                            <div class="relative w-full h-64"><canvas id="mainChart"></canvas></div>
+                        </div>
+                        <div id="chart-detail" class="hidden bg-white border border-blue-200 p-3 rounded shadow animate-pulse"></div>
+                    </div>`;
+                setTimeout(() => this.updateChart(), 100);
+            }
+            changeChartMode(mode) { this.analysisMode = mode; this.renderAnalysis(document.getElementById('main-content')); }
+            
+            updateChart() {
+                this.analysisFilterTag = document.getElementById('chart-filter').value;
+                if(this.analysisMode === 'achieve') { this.analysisFishTarget = document.getElementById('chart-achieve-fish').value; }
+                const ctx = document.getElementById('mainChart').getContext('2d');
+                if (this.chartInstance) this.chartInstance.destroy();
+                let ls = this.db.getAllLures();
+                if (this.analysisFilterTag !== 'all') { const ids = this.db.data.boxes.filter(b => (b.tags || []).includes(this.analysisFilterTag)).map(b => b.id); ls = ls.filter(l => ids.includes(l.boxId)); }
+
+                if (this.analysisMode === 'spec') {
+                    const xk = document.getElementById('chart-x').value, yk = document.getElementById('chart-y').value;
+                    const datasets = [], types = [...new Set(ls.map(l => l.sinkType || 'Unknown'))];
+                    const colors = { 'F (フローティング)': '#3b82f6', 'S (シンキング)': '#ef4444', 'SP (サスペンド)': '#eab308', 'HS (ヘビーシンキング)': '#9333ea', 'Unknown': '#9ca3af' };
+                    types.forEach(t => { datasets.push({ label: Utils.simplifyType(t), data: ls.filter(l => (l.sinkType || 'Unknown') === t).map(l => ({ x: Number(l[xk] || 0), y: Number(l[yk] || 0), lure: l })), backgroundColor: colors[t] || colors['Unknown'], pointRadius: 6 }); });
+                    this.chartInstance = new Chart(ctx, { type: 'scatter', data: { datasets }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { title: { display: true, text: xk } }, y: { title: { display: true, text: yk } } }, onClick: (e, el) => { if (el.length > 0) { const l = this.chartInstance.data.datasets[el[0].datasetIndex].data[el[0].index].lure; this.showChartDetail(l); } } } });
+                } else if (this.analysisMode === 'type') {
+                    const colors = { 'F (フローティング)': '#3b82f6', 'S (シンキング)': '#ef4444', 'SP (サスペンド)': '#eab308', 'HS (ヘビーシンキング)': '#9333ea', 'Unknown': '#9ca3af' };
+                    const masterTypes = this.db.data.master.types;
+                    const dataTypes = [...new Set(ls.map(l => l.type || '未設定'))];
+                    const allTypes = [...new Set([...masterTypes, ...dataTypes])].filter(t => dataTypes.includes(t));
+                    const allSinkTypes = Object.keys(colors);
+                    const barDatasets = allSinkTypes.map(st => ({ label: Utils.simplifyType(st), data: allTypes.map(type => ls.filter(l => (l.type || '未設定') === type && (l.sinkType || 'Unknown') === st).reduce((sum, l) => sum + (Number(l.count) || 1), 0)), backgroundColor: colors[st] }));
+                    this.chartInstance = new Chart(ctx, { type: 'bar', data: { labels: allTypes, datasets: barDatasets }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true } } } });
+                } else if (this.analysisMode === 'rank') {
+                    const masterTypes = this.db.data.master.types;
+                    const dataTypes = [...new Set(ls.map(l => l.type || '未設定'))];
+                    const allTypes = [...new Set([...masterTypes, ...dataTypes])].filter(t => dataTypes.includes(t));
+                    const ranks = ['1軍', '2軍', '3軍', '指定なし'];
+                    const rankColors = {'1軍': '#eab308', '2軍': '#9ca3af', '3軍': '#c2410c', '指定なし': '#f3f4f6'};
+                    const datasets = ranks.map(rank => ({ label: rank, data: allTypes.map(type => ls.filter(l => (l.type || '未設定') === type && (l.rank || '指定なし') === rank).reduce((sum, l) => sum + (Number(l.count) || 1), 0)), backgroundColor: rankColors[rank] }));
+                    this.chartInstance = new Chart(ctx, { type: 'bar', data: { labels: allTypes, datasets: datasets }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true } } } });
+                } else if (this.analysisMode === 'achieve') {
+                    if (this.analysisFishTarget === 'all') {
+                        const counts = {};
+                        ls.forEach(l => { if (!l.achievements) return; l.achievements.split(/[,、\s]+/).filter(s => s.trim()).forEach(fish => { counts[fish] = (counts[fish] || 0) + 1; }); });
+                        const labels = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+                        const data = labels.map(k => counts[k]);
+                        const bgColors = labels.map((_, i) => `hsl(${i * 360 / (labels.length || 1)}, 70%, 60%)`);
+                        if (labels.length === 0) { this.chartInstance = new Chart(ctx, { type: 'doughnut', data: { labels: ['データなし'], datasets: [{ data: [1], backgroundColor: ['#eee'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: '実績データがありません' } } } }); } else { this.chartInstance = new Chart(ctx, { type: 'doughnut', data: { labels, datasets: [{ data, backgroundColor: bgColors }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'よく釣れる魚種' } } } }); }
+                    } else {
+                        const targetFish = this.analysisFishTarget;
+                        const filteredLures = ls.filter(l => l.achievements && l.achievements.includes(targetFish));
+                        const typeCounts = {};
+                        filteredLures.forEach(l => { const type = l.type || '未設定'; typeCounts[type] = (typeCounts[type] || 0) + 1; });
+                        const labels = Object.keys(typeCounts).sort((a, b) => typeCounts[b] - typeCounts[a]);
+                        const data = labels.map(k => typeCounts[k]);
+                        const bgColors = labels.map((_, i) => `hsl(${i * 360 / (labels.length || 1)}, 70%, 60%)`);
+                        if (labels.length === 0) { this.chartInstance = new Chart(ctx, { type: 'doughnut', data: { labels: ['データなし'], datasets: [{ data: [1], backgroundColor: ['#eee'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: '該当するルアーがありません' } } } }); } else { this.chartInstance = new Chart(ctx, { type: 'doughnut', data: { labels, datasets: [{ data, backgroundColor: bgColors }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: `${targetFish}が釣れたルアー` } } } }); }
+                    }
+                }
+            }
+            showChartDetail(l) { const d = document.getElementById('chart-detail'); d.classList.remove('hidden'); d.innerHTML = `<div class="font-bold text-blue-800">${l.name}</div><div class="text-xs text-gray-600 mb-1">${l.maker} / ${l.color}</div><div class="text-xs font-mono bg-gray-100 p-1 inline-block rounded">L:${l.length}mm / W:${l.weight}g</div>${l.status && l.status !== '所持' ? `<div class="mt-1 text-xs text-red-500 font-bold">${l.status}</div>` : ''}`; }
+            renderNotes(c) {
+                document.getElementById('header-actions').innerHTML = '';
+                c.innerHTML = `<div class="space-y-6 pb-20"><section class="bg-white p-4 rounded shadow"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2 flex items-center"><i class="fa-solid fa-book-open mr-2 text-blue-500"></i>アプリの使い方</h3><div class="text-sm text-gray-600 space-y-4"><div><span class="font-bold text-blue-800 block mb-1">1. ボックスを登録する</span><p>「ボックス」タブ右上の<span class="bg-blue-500 text-white text-[10px] px-1 rounded">＋</span>ボタンから、手持ちのルアーケースごとの写真を登録します。</p></div><div><span class="font-bold text-blue-800 block mb-1">2. ルアーを詳細登録する</span><p>登録したボックス詳細画面で「個別登録」を行います。一覧からルアーをタップして「編集」や「スペックをコピーして新規」が可能です。</p></div><div><span class="font-bold text-blue-800 block mb-1">3. 戦力を分析する</span><p>「分析」タブでルアーの分布図や実績グラフを確認できます。</p></div><div><span class="font-bold text-blue-800 block mb-1">4. マスタデータの編集</span><p>「設定」タブで、メーカー名や選択肢をカスタマイズできます。</p></div><div class="bg-red-50 p-2 rounded border border-red-200"><span class="font-bold text-red-600 block mb-1"><i class="fa-solid fa-circle-exclamation mr-1"></i>5. データのバックアップ（重要）</span><p class="text-red-600 font-bold text-xs mb-2">ブラウザのキャッシュ削除でデータが消えます。こまめに「書き出し」を行ってください。</p></div></div></section><section class="bg-red-50 p-4 rounded shadow border border-red-100"><h3 class="font-bold text-red-700 mb-3 border-b border-red-200 pb-2 flex items-center"><i class="fa-solid fa-triangle-exclamation mr-2"></i>釣りの注意点</h3><div class="text-sm text-gray-700 space-y-4"><div><span class="font-bold block mb-1 text-red-800">安全を最優先に（安全第一）</span><p>磯など足場の悪い場所ではスパイクシューズ等を装備し、ライフジャケットの着用を推奨します。万一に備え、できるだけ複数人で行動することをお勧めします。釣り禁止エリアには立ち入ってはいけません。</p></div><div><span class="font-bold block mb-1 text-red-800">事前の天候確認</span><p>風速、波の高さ、潮位を事前にチェックしましょう。雨の際は、足場の滑りやすさ等の状況が変化します。初めて訪れる場所は特に注意が必要です。</p></div><div><span class="font-bold block mb-1 text-red-800">釣り環境の保護</span><p>ゴミは持ち帰るようにしましょう。フック、ライン、鉛の放置は、野鳥などの野生生物に深刻な被害を与える恐れがあります。</p></div><div><span class="font-bold block mb-1 text-red-800">事故防止と安全対策（フック事故）</span><p>釣り針から身を守るため、帽子や偏光グラスの着用を推奨します。特に釣り公園など人が多い場所では、キャストする際に周囲の安全へ十分注意しましょう。</p></div></div></section><section class="bg-teal-50 p-4 rounded shadow border border-teal-100"><h3 class="font-bold text-teal-700 mb-3 border-b border-teal-200 pb-2 flex items-center"><i class="fa-solid fa-hand-holding-heart mr-2"></i>魚と自然への配慮</h3><div class="text-sm text-gray-700 space-y-4"><div><h4 class="font-bold text-teal-800 mb-2 border-b border-teal-200 inline-block">数を減らしている種への配慮</h4><div class="space-y-2"><div><span class="font-bold text-teal-900">適切なキープとリリース：</span><br>持ち帰り（キープ）数の制限を意識し、必要以上の魚はリリース（再放流）しましょう。</div><div><span class="font-bold text-teal-900">魚体へのダメージ軽減：</span><br>魚を傷つけにくいバーブレスフック（カエシのない針）の使用や、濡れた手での取り扱いなど、丁寧な扱いを心がけましょう。</div><div><span class="font-bold text-teal-900">釣行の削減：</span><br>数を減らしている種に対しては、狙う魚種の転換、釣行回数の抑制、繁殖期等の回避を検討しましょう。</div></div></div><div><h4 class="font-bold text-teal-800 mb-2 border-b border-teal-200 inline-block">外来種と生態系への配慮</h4><div class="space-y-2"><div><span class="font-bold text-teal-900">持ち出し・放流について：</span><br>特定外来生物の生きたままの持ち出しや放流は法律で禁止されているため、ご注意ください。</div><div><span class="font-bold text-teal-900">地域ルールの確認：</span><br>リリースの可否や遊漁規則については、その地域の条例やルールに従ってください。</div><div><span class="font-bold text-teal-900">調査への協力：</span><br>見慣れない魚を釣り上げた場合や、見慣れない症状をした魚を見た場合は、専門機関へ情報を提供しましょう。</div></div></div></div></section></div>`;
+            }
+            renderSettings(c) {
+                document.getElementById('header-actions').innerHTML = ''; const m = this.db.data.master, s = this.db.data.settings;
+                c.innerHTML = `<div class="space-y-6 pb-20"><section class="bg-white p-4 rounded shadow"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-paintbrush mr-2"></i>表示設定</h3><div class="mb-4"><label class="block text-xs font-bold text-gray-600 mb-1">文字サイズ</label><div class="flex gap-2">${['x-small','small','medium','large'].map(v=>`<button onclick="ui.changeSetting('fontSize','${v}')" class="flex-1 py-2 rounded text-xs border ${s.fontSize===v?'bg-blue-600 text-white border-blue-600':'bg-gray-50 text-gray-600 border-gray-200'}">${v==='x-small'?'極小':v==='small'?'小':v==='medium'?'中':'大'}</button>`).join('')}</div></div><div class="mb-2"><label class="block text-xs font-bold text-gray-600 mb-1">背景色</label><div class="flex gap-2">${['#f3f4f6','#ffffff','#e0f2fe','#fff7ed'].map(x=>`<button onclick="ui.changeSetting('bgColor','${x}')" class="w-8 h-8 rounded-full border-2 ${s.bgColor===x?'border-blue-600 scale-110 shadow-md':'border-transparent'}" style="background-color:${x};"></button>`).join('')}</div></div></section><section class="bg-white p-4 rounded shadow"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-database mr-2"></i>データ管理</h3><div class="grid grid-cols-2 gap-3"><button onclick="db.exportData()" class="bg-green-600 text-white py-2 rounded text-sm hover:bg-green-700"><i class="fa-solid fa-file-export mr-1"></i>書き出し</button><label class="bg-orange-500 text-white py-2 rounded text-center text-sm hover:bg-orange-600 cursor-pointer"><i class="fa-solid fa-file-import mr-1"></i>読み込み<input type="file" class="hidden" onchange="ui.handleImport(this)"></label></div></section><section class="bg-white p-4 rounded shadow"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-list-check mr-2"></i>マスタ編集</h3><p class="text-[10px] text-gray-400 mb-2">※カンマ(,)区切りで入力してください</p>${this.renderMasterEditor('manufacturers','メーカー名',m.manufacturers)}${this.renderMasterEditor('types','ルアータイプ',m.types)}${this.renderMasterEditor('fields','フィールド',m.fields)}${this.renderMasterEditor('targets','対象魚',m.targets)}${this.renderMasterEditor('hooks','フックサイズ',m.hooks)}</section><section class="bg-white p-4 rounded shadow mt-6"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-rotate mr-2"></i>アプリの更新</h3><p class="text-xs text-gray-600 mb-3">最新の機能が反映されない場合は、キャッシュを削除して更新してください。<br><span class="text-red-500 font-bold">※ルアーデータは保持されます。</span></p><button onclick="ui.forceUpdate()" class="w-full bg-gray-800 text-white py-3 rounded font-bold hover:bg-gray-700 transition"><i class="fa-solid fa-sync mr-2"></i>最新の状態に更新する</button></section></div>`;
+            }
+            changeSetting(k, v) { this.db.updateSettings({[k]:v}); this.applyTheme(); this.renderSettings(document.getElementById('main-content')); }
+            renderMasterEditor(k, t, l) { return `<div class="mb-4"><label class="block text-xs font-bold text-gray-600 mb-1">${t}</label><textarea id="master-${k}" class="w-full text-xs border rounded p-2 bg-gray-50" rows="3">${l.join(', ')}</textarea><button onclick="ui.saveMaster('${k}')" class="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-1 rounded mt-1">更新</button></div>`; }
+            saveMaster(k) { const v = document.getElementById(`master-${k}`).value; this.db.updateMaster(k, v.split(',').map(s => s.trim()).filter(s => s)); Utils.showToast(`${k}を更新しました`); }
+            handleImport(i) { const f = i.files[0]; if(!f) return; const r = new FileReader(); r.onload=e => { if(this.db.importData(e.target.result)) { alert('データを復元しました'); location.reload(); } }; r.readAsText(f); }
+            async forceUpdate() { if(!confirm('アプリを最新の状態に更新しますか？\n(登録データは保持されます)')) return; try { if ('serviceWorker' in navigator) { const regs = await navigator.serviceWorker.getRegistrations(); for (let r of regs) await r.unregister(); } const keys = await caches.keys(); await Promise.all(keys.map(k => caches.delete(k))); alert('キャッシュを削除しました。再読み込みします。'); window.location.reload(true); } catch (e) { console.error(e); alert('更新に失敗しました。'); } }
+            openBoxModal(bid=null) { const m = this.db.data.master, isEdit = !!bid, box = isEdit ? this.db.getBox(bid) : { note: '', tags: [], image: null }, btags = box.tags || []; const ctag = (t, items) => `<div class="mb-3"><label class="block text-xs font-bold mb-1 text-gray-500">${t}</label><div class="flex flex-wrap gap-2">${items.map(x => `<label class="inline-flex items-center"><input type="checkbox" value="${x}" class="hidden peer box-tag-input" ${btags.includes(x) ? 'checked' : ''}><span class="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full cursor-pointer peer-checked:bg-blue-500 peer-checked:text-white transition select-none">${Utils.simplifyType(x)}</span></label>`).join('')}</div></div>`; const c = `<div class="p-4"><h3 class="font-bold text-lg mb-4">${isEdit ? 'ボックス編集' : '新しいボックス'}</h3><div class="mb-4"><label class="block text-sm font-bold mb-1">写真</label><label class="block w-full h-32 border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 image-preview bg-center bg-cover bg-no-repeat" id="box-img-preview" style="${box.image ? `background-image:url(${box.image})` : ''}" data-base64="${box.image || ''}">${!box.image ? `<i class="fa-solid fa-camera text-2xl text-gray-400 mb-1"></i><span class="text-xs text-gray-400">タップして撮影/選択</span>` : ''}<input type="file" accept="image/*" class="hidden" onchange="ui.handleImagePreview(this, 'box-img-preview')"></label></div><div class="mb-4"><label class="block text-sm font-bold mb-1">メモ / タイトル</label><input type="text" id="box-note" class="w-full border rounded p-2" value="${box.note}"></div><div class="mb-4 max-h-60 overflow-y-auto border-t border-b py-2">${ctag('ルアータイプ', m.types)}${ctag('浮力タイプ', m.sinkTypes)}${ctag('フィールド', m.fields)}${ctag('対象魚', m.targets)}</div><div class="flex gap-2"><button onclick="ui.closeModal()" class="flex-1 bg-gray-200 text-gray-800 py-2 rounded">キャンセル</button><button onclick="ui.submitBox('${bid || ''}')" class="flex-1 bg-blue-600 text-white py-2 rounded font-bold">${isEdit ? '更新' : '登録'}</button></div></div>`; this.showModal(c); }
+            async handleImagePreview(i, tid) { if (i.files && i.files[0]) { const c = await Utils.compressImage(i.files[0]); const el = document.getElementById(tid); el.style.backgroundImage = `url(${c})`; el.dataset.base64 = c; el.innerHTML = ''; } }
+            submitBox(bid) { const img = document.getElementById('box-img-preview').dataset.base64 || null, note = document.getElementById('box-note').value, tags = Array.from(document.querySelectorAll('.box-tag-input:checked')).map(x => x.value); if (!img && !note) { alert('写真かメモのどちらかは必須です'); return; } const now = Date.now(); if (bid) { const old = this.db.getBox(bid); this.db.updateBox({ ...old, image: img, note: note, tags: tags, lastModified: now }); Utils.showToast('ボックスを更新しました'); } else { this.db.addBox({ id: Utils.uuid(), image: img, note: note, tags: tags, timestamp: now, lastModified: now }); Utils.showToast('ボックスを作成しました'); } this.closeModal(); bid ? this.renderBoxDetail(document.getElementById('main-content'), bid) : this.renderHome(document.getElementById('main-content')); }
+            deleteBox(id) { if (confirm('このボックスと中のルアーデータを全て削除しますか？')) { this.db.deleteBox(id); router.navigate('home'); } }
+            openLureForm(bid, copy = null, editLureId = null) { const m = this.db.data.master, isEdit = !!editLureId; let l; if(isEdit) { l = this.db.data.lures.find(x => x.id === editLureId); } else { const last = !copy && sessionStorage.getItem('last_lure') ? JSON.parse(sessionStorage.getItem('last_lure')) : null; l = copy || last || { name: '', maker: '', type: '', sinkType: 'F (フローティング)', length: '', weight: '', depth: '', sinkRate: '', color: '', count: 1, hookSize: '', status: '所持', purchaseDate: Utils.getTodayString(), achievements: '', rank: '指定なし' }; } const sinkOptions = m.sinkTypes.map(x => `<option value="${x}" ${l.sinkType === x ? 'selected' : ''}>${Utils.simplifyType(x)}</option>`).join(''); const c = `<div class="p-4"><h3 class="font-bold text-lg mb-4">${isEdit ? 'ルアー情報編集' : 'ルアー詳細登録'}</h3><div class="grid grid-cols-2 gap-3 mb-3"><div><label class="text-xs text-gray-500">メーカー</label><select id="lure-maker" class="w-full border p-1 rounded"><option value="">選択</option>${m.manufacturers.map(x => `<option ${l.maker === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div><div><label class="text-xs text-gray-500">商品名</label><input type="text" id="lure-name" class="w-full border p-1 rounded" value="${l.name}"></div></div><div class="grid grid-cols-2 gap-3 mb-3"><div><label class="text-xs text-gray-500">タイプ</label><select id="lure-type" class="w-full border p-1 rounded">${m.types.map(x => `<option ${l.type === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div><div><label class="text-xs text-gray-500">浮力</label><select id="lure-sink" class="w-full border p-1 rounded" onchange="ui.toggleDepthInputs()">${sinkOptions}</select></div></div><div class="grid grid-cols-3 gap-2 mb-3"><div><label class="text-xs text-gray-500">長さ(mm)</label><input type="number" inputmode="decimal" step="5" min="0" id="lure-len" class="w-full border p-1 rounded" value="${l.length}"></div><div><label class="text-xs text-gray-500">重さ(g)</label><input type="number" inputmode="decimal" step="0.1" min="0" id="lure-wgt" class="w-full border p-1 rounded" value="${l.weight}"></div><div id="input-group-depth"><label class="text-xs text-gray-500">潜行深度(m)</label><input type="number" inputmode="decimal" step="0.5" min="0" id="lure-dep" class="w-full border p-1 rounded" value="${l.depth || ''}"></div><div id="input-group-sinkrate" style="display:none;"><label class="text-xs text-gray-500">沈降速度(m/s)</label><input type="number" inputmode="decimal" step="0.1" min="0" id="lure-sink-rate" class="w-full border p-1 rounded" value="${l.sinkRate || ''}"></div></div><div class="grid grid-cols-3 gap-2 mb-3"><div><label class="text-xs text-gray-500">フック</label><select id="lure-hook" class="w-full border p-1 rounded"><option value="">選択</option>${(m.hooks || []).map(h => `<option ${l.hookSize === h ? 'selected' : ''}>${h}</option>`).join('')}</select></div><div class="col-span-2"><label class="text-xs text-gray-500">状態</label><select id="lure-status" class="w-full border p-1 rounded"><option ${l.status === '所持' ? 'selected' : ''}>所持</option><option ${l.status === 'ロスト' ? 'selected' : ''}>ロスト</option><option ${l.status === '購入予定' ? 'selected' : ''}>購入予定</option></select></div></div><div class="grid grid-cols-3 gap-2 mb-3"><div><label class="text-xs text-gray-500">ランク</label><select id="lure-rank" class="w-full border p-1 rounded"><option value="指定なし" ${!l.rank || l.rank === '指定なし' ? 'selected' : ''}>指定なし</option><option value="1軍" ${l.rank === '1軍' ? 'selected' : ''}>1軍</option><option value="2軍" ${l.rank === '2軍' ? 'selected' : ''}>2軍</option><option value="3軍" ${l.rank === '3軍' ? 'selected' : ''}>3軍</option></select></div><div class="col-span-2"><label class="text-xs text-gray-500">実績 (釣れた魚種)</label><input type="text" id="lure-achieve" class="w-full border p-1 rounded" placeholder="例: シーバス, クロダイ" value="${l.achievements || ''}"></div></div><div class="grid grid-cols-2 gap-3 mb-4"><div><label class="text-xs text-gray-500">カラー</label><input type="text" id="lure-color" class="w-full border p-1 rounded" value="${l.color}"></div><div><label class="text-xs text-gray-500">購入日</label><input type="date" id="lure-date" class="w-full border p-1 rounded" value="${l.purchaseDate || Utils.getTodayString()}"></div></div><div class="mb-4"><label class="text-xs text-gray-500">個数</label><input type="number" inputmode="numeric" min="0" id="lure-count" class="w-full border p-1 rounded" value="${l.count}"></div><div class="flex gap-2"><button onclick="ui.closeModal()" class="flex-1 bg-gray-200 py-2 rounded">キャンセル</button><button onclick="ui.submitLure('${bid}', '${editLureId || ''}')" class="flex-1 bg-blue-600 text-white py-2 rounded">${isEdit ? '更新' : '登録'}</button></div></div>`; this.showModal(c); this.toggleDepthInputs(); }
+            toggleDepthInputs() { const val = document.getElementById('lure-sink').value; if (val.includes('S') && !val.includes('SP')) { document.getElementById('input-group-depth').style.display = 'none'; document.getElementById('input-group-sinkrate').style.display = 'block'; } else { document.getElementById('input-group-depth').style.display = 'block'; document.getElementById('input-group-sinkrate').style.display = 'none'; } }
+            submitLure(bid, editId) { const l = { id: editId || Utils.uuid(), boxId: bid, maker: document.getElementById('lure-maker').value, name: document.getElementById('lure-name').value, type: document.getElementById('lure-type').value, sinkType: document.getElementById('lure-sink').value, length: document.getElementById('lure-len').value, weight: document.getElementById('lure-wgt').value, depth: document.getElementById('lure-dep').value, sinkRate: document.getElementById('lure-sink-rate').value, color: document.getElementById('lure-color').value, count: document.getElementById('lure-count').value, hookSize: document.getElementById('lure-hook').value, status: document.getElementById('lure-status').value, purchaseDate: document.getElementById('lure-date').value, rank: document.getElementById('lure-rank').value, achievements: document.getElementById('lure-achieve').value }; if(editId) { this.db.updateLure(l); Utils.showToast('ルアー情報を更新しました'); } else { sessionStorage.setItem('last_lure', JSON.stringify(l)); this.db.addLure(l); Utils.showToast('ルアーを登録しました'); } this.closeModal(); this.renderBoxDetail(document.getElementById('main-content'), bid); }
+            openLureDetail(lid) { const l = this.db.data.lures.find(x => x.id === lid); const depthInfo = (l.sinkType && (l.sinkType.includes('S') || l.sinkType.includes('HS'))) ? `沈降: ${l.sinkRate || '-'} m/s` : `深度: ${l.depth || '-'} m`; const c = `<div class="p-4 text-center"><h3 class="font-bold mb-1 text-lg">${l.name} ${l.achievements ? '<i class="fa-solid fa-star text-yellow-500 ml-1"></i>' : ''}</h3><p class="text-sm text-gray-600 mb-2">${l.maker} / ${l.type}</p>${l.rank && l.rank !== '指定なし' ? `<span class="inline-block bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs mb-2 border">ランク: ${l.rank}</span>` : ''}<div class="bg-gray-50 rounded p-2 mb-4 text-sm grid grid-cols-2 gap-2 text-left"><span>タイプ: ${Utils.simplifyType(l.sinkType)}</span><span>カラー: ${l.color}</span><span>長さ: ${l.length}mm</span><span>重さ: ${l.weight}g</span><span>${depthInfo}</span><span>フック: ${l.hookSize}</span><span>状態: ${l.status}</span><span>購入: ${l.purchaseDate}</span></div>${l.achievements ? `<div class="mb-4 text-left bg-yellow-50 p-2 rounded border border-yellow-200"><div class="text-xs text-yellow-800 font-bold mb-1"><i class="fa-solid fa-trophy mr-1"></i>実績</div><div class="text-sm text-gray-700">${l.achievements}</div></div>` : ''}<div class="flex flex-col gap-2"><button onclick="ui.closeModal(); setTimeout(()=>ui.openLureForm('${l.boxId}', null, '${l.id}'), 200)" class="bg-green-600 text-white py-2 rounded font-bold"><i class="fa-solid fa-pen mr-1"></i>編集する</button><button onclick="ui.copyAndAdd('${lid}')" class="bg-blue-100 text-blue-800 py-2 rounded">スペックをコピーして新規</button><button onclick="ui.deleteLure('${lid}','${l.boxId}')" class="bg-red-100 text-red-600 py-2 rounded">削除</button><button onclick="ui.closeModal()" class="text-gray-500 mt-2">閉じる</button></div></div>`; this.showModal(c); }
+            deleteLure(id, bid) { if (confirm('削除しますか？')) { this.db.deleteLure(id); this.closeModal(); this.renderBoxDetail(document.getElementById('main-content'), bid); } }
+            copyAndAdd(id) { const l = this.db.data.lures.find(x => x.id === id); this.closeModal(); setTimeout(() => this.openLureForm(l.boxId, l), 200); }
+            showModal(h) { const c = document.getElementById('modal-container'); c.innerHTML = h; document.getElementById('modal-overlay').classList.remove('hidden'); c.classList.add('modal-enter'); setTimeout(() => c.classList.add('modal-enter-active'), 10); }
+            closeModal() { const c = document.getElementById('modal-container'); c.classList.remove('modal-enter-active'); c.classList.add('modal-exit-active'); setTimeout(() => { document.getElementById('modal-overlay').classList.add('hidden'); c.classList.remove('modal-exit-active'); c.innerHTML = ''; }, 200); }
         }
-    };
-    
-    document.getElementById('sys-upd').onclick = async () => {
-        if(confirm('キャッシュを削除してリロードしますか？')) {
-            if('serviceWorker' in navigator) (await navigator.serviceWorker.getRegistrations()).forEach(r=>r.unregister());
-            if('caches' in window) (await caches.keys()).forEach(k=>caches.delete(k));
-            location.reload(true);
-        }
-    };
-}
 
-// データ処理
-async function exportAllData() {
-    const data = {};
-    for (const t of ['hunter_profile','settings','trap','trap_type','gun','gun_log','catch_records','checklist_sets','checklist_items','game_animal_list','ammo_purchases','profile_images']) {
-        data[t] = await db[t].toArray();
-    }
-    for (const t of ['trap','catch_records','gun_log','profile_images']) {
-        if(data[t]) data[t] = await Promise.all(data[t].map(async i => ({...i, image_blob: await blobToBase64(i.image_blob)})));
-    }
-    const blob = new Blob([JSON.stringify(data)], {type:'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `backup_${new Date().toISOString().slice(0,10)}.json`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-}
-
-async function importAllData(file) {
-    if(!confirm('現在のデータは上書きされます。よろしいですか？')) return;
-    try {
-        const data = JSON.parse(await file.text());
-        const tabs = data.tables || data;
-        const conv = async (t) => tabs[t] ? Promise.all(tabs[t].map(async i => ({...i, image_blob: await base64ToBlob(i.image_blob)}))) : [];
-        
-        await db.transaction('rw', db.tables, async () => {
-            await Promise.all(db.tables.map(t=>t.clear()));
-            await Promise.all([
-                db.hunter_profile.bulkAdd(tabs.hunter_profile||[]), db.settings.bulkAdd(tabs.settings||[]),
-                db.trap_type.bulkAdd(tabs.trap_type||[]), db.gun.bulkAdd(tabs.gun||[]),
-                db.ammo_purchases.bulkAdd(tabs.ammo_purchases||[]), db.game_animal_list.bulkAdd(tabs.game_animal_list||[]),
-                db.checklist_sets.bulkAdd(tabs.checklist_sets||[]), db.checklist_items.bulkAdd(tabs.checklist_items||[]),
-                db.trap.bulkAdd(await conv('trap')), db.catch_records.bulkAdd(await conv('catch_records')),
-                db.gun_log.bulkAdd(await conv('gun_log')), db.profile_images.bulkAdd(await conv('profile_images'))
-            ]);
-        });
-        alert('完了'); location.reload();
-    } catch { alert('失敗'); }
-}
-
-async function exportGunLogsAsCSV() {
-    const logs = await db.gun_log.orderBy('use_date').toArray();
-    if(!logs.length) return alert('なし');
-    const guns = await db.gun.toArray(); const gMap = new Map(guns.map(g=>[g.id,g.name]));
-    const headers = ['ID','使用日','銃','目的','弾数','同行者','場所','緯度','経度','メモ'];
-    const csv = '\uFEFF' + headers.join(',') + '\r\n' + logs.map(l => [l.id, l.use_date, gMap.get(l.gun_id)||'', l.purpose, l.ammo_count, l.companion, l.location, l.latitude, l.longitude, l.memo].map(v=>`"${(v||'').toString().replace(/"/g,'""')}"`).join(',')).join('\r\n');
-    downloadCSV(csv, 'gun_logs.csv');
-}
-
-async function exportCatchesAsCSV() {
-    const recs = await db.catch_records.orderBy('catch_date').toArray();
-    if(!recs.length) return alert('なし');
-    const headers = ['ID','捕獲日','種名','性別','年齢','緯度','経度','メモ'];
-    const csv = '\uFEFF' + headers.join(',') + '\r\n' + recs.map(r => [r.id, r.catch_date, r.species_name, r.gender, r.age, r.latitude, r.longitude, r.memo].map(v=>`"${(v||'').toString().replace(/"/g,'""')}"`).join(',')).join('\r\n');
-    downloadCSV(csv, 'catch_records.csv');
-}
-
-function downloadCSV(csv, name) {
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download = name;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-}
-
-function blobToBase64(b) { return new Promise((res,rej)=>{ if(!b){res(null);return;} const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(b); }); }
-async function base64ToBlob(d) { if(!d)return null; return (await fetch(d)).blob(); }
+        const db = new DataManager();
+        const ui = new UIManager(db);
+        const router = new AppRouter(ui);
+        document.addEventListener('DOMContentLoaded', () => router.navigate('home'));
+    </script>
+</body>
+</html>
