@@ -179,13 +179,9 @@
             }
             renderBoxDetail(c, bid) {
                 const b = this.db.getBox(bid); if (!b) return router.navigate('home');
-                // 戻るボタンの mr-auto を削除し、ボタン群をまとめる
+                // ヘッダーは「戻る」ボタンのみにする
                 document.getElementById('header-actions').innerHTML = `
-                    <button onclick="router.navigate('home')" class="bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded text-xs transition flex items-center gap-1 border border-white/20 whitespace-nowrap"><i class="fa-solid fa-arrow-left"></i> 戻る</button>
-                    <div class="flex gap-1 ml-1">
-                        <button onclick="ui.openBoxModal('${bid}')" class="text-white hover:text-blue-200 p-2"><i class="fa-solid fa-pen-to-square"></i></button>
-                        <button onclick="ui.deleteBox('${bid}')" class="text-red-400 hover:text-red-300 p-2"><i class="fa-solid fa-trash"></i></button>
-                    </div>`;
+                    <button onclick="router.navigate('home')" class="bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded text-xs transition flex items-center gap-1 border border-white/20 whitespace-nowrap"><i class="fa-solid fa-arrow-left"></i> 戻る</button>`;
                 
                 let ls = [...this.db.getLuresByBoxId(bid)];
                 if (this.boxSortKey === 'sizeDesc') ls.sort((a, b) => (b.length || 0) - (a.length || 0));
@@ -197,7 +193,14 @@
                     <div class="bg-white rounded-lg shadow mb-6 overflow-hidden">
                         <div class="h-48 bg-gray-200 relative group">${b.image ? `<img src="${b.image}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center"><i class="fa-solid fa-image text-4xl text-gray-300"></i></div>`}</div>
                         <div class="p-4">
-                            <h2 class="font-bold text-lg mb-2">${b.note || '名称未設定'}</h2>
+                            <!-- タイトルの横に編集・削除ボタンを配置 -->
+                            <div class="flex justify-between items-start mb-2">
+                                <h2 class="font-bold text-lg leading-tight mr-2">${b.note || '名称未設定'}</h2>
+                                <div class="flex gap-3 shrink-0">
+                                    <button onclick="ui.openBoxModal('${bid}')" class="text-gray-400 hover:text-blue-600 transition"><i class="fa-solid fa-pen-to-square text-lg"></i></button>
+                                    <button onclick="ui.deleteBox('${bid}')" class="text-gray-400 hover:text-red-500 transition"><i class="fa-solid fa-trash text-lg"></i></button>
+                                </div>
+                            </div>
                             <div class="flex gap-1 flex-wrap mb-2">${(b.tags || []).map(t => `<span class="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded inline-flex items-center justify-center border border-gray-200">${Utils.simplifyType(t)}</span>`).join('')}</div>
                             <p class="text-xs text-gray-500 text-right">最終編集日: ${Utils.formatDate(b.lastModified || b.timestamp)}</p>
                         </div>
