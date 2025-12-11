@@ -41,7 +41,7 @@
     <div id="app" class="w-full max-w-md h-full shadow-xl overflow-hidden relative flex flex-col mx-auto">
         <header class="bg-slate-800 text-white p-4 sticky top-0 z-50 flex justify-between items-center shadow-md shrink-0 pt-safe-top">
             <h1 class="text-sm font-bold tracking-wide whitespace-nowrap"><i class="fa-solid fa-fish-fins mr-2"></i>BLNCR LURE HANGAR</h1>
-            <div id="header-actions"></div>
+            <div id="header-actions" class="flex items-center gap-2"></div>
         </header>
         <main id="main-content" class="p-4 overflow-y-auto grow"></main>
         <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around items-center pb-safe-bottom max-w-md mx-auto z-50 h-16 shrink-0">
@@ -69,7 +69,14 @@
             },
             formatDate: (ts) => ts ? new Date(ts).toLocaleDateString('ja-JP') : '',
             getTodayString: () => { const d = new Date(); return `${d.getFullYear()}-${('0'+(d.getMonth()+1)).slice(-2)}-${('0'+d.getDate()).slice(-2)}`; },
-            showToast: (msg) => { const t = document.getElementById('toast'); t.textContent = msg; t.classList.remove('opacity-0'); setTimeout(() => t.classList.add('opacity-0'), 3000); }
+            showToast: (msg) => { const t = document.getElementById('toast'); t.textContent = msg; t.classList.remove('opacity-0'); setTimeout(() => t.classList.add('opacity-0'), 3000); },
+            // 表記簡略化メソッド (例: "S (シンキング)" -> "シンキング")
+            simplifyType: (str) => {
+                if (!str) return '';
+                // 括弧の中身があればそれを、なければそのまま
+                const match = str.match(/\(([^)]+)\)/);
+                return match ? match[1] : str;
+            }
         };
 
         class DataManager {
@@ -154,7 +161,7 @@
                             <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2 pt-6">
                                 ${b.note ? `<div class="text-white text-xs font-bold truncate mb-1">${b.note}</div>` : ''}
                                 <div class="flex gap-1 flex-wrap h-5 overflow-hidden">
-                                    ${(b.tags || []).slice(0, 3).map(t => `<span class="bg-blue-500/80 text-[8px] text-white px-2 py-0.5 rounded inline-flex items-center justify-center">${t}</span>`).join('')}
+                                    ${(b.tags || []).slice(0, 3).map(t => `<span class="bg-blue-500/80 text-[8px] text-white px-2 py-0.5 rounded inline-flex items-center justify-center">${Utils.simplifyType(t)}</span>`).join('')}
                                 </div>
                             </div>
                             <div class="absolute top-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full shadow-sm">${totalCount}個/${typeCount}種類</div>
@@ -165,17 +172,33 @@
             }
             renderBoxDetail(c, bid) {
                 const b = this.db.getBox(bid); if (!b) return router.navigate('home');
-                document.getElementById('header-actions').innerHTML = `<button onclick="router.navigate('home')" class="text-gray-300 hover:text-white mr-3"><i class="fa-solid fa-arrow-left"></i></button><button onclick="ui.openBoxModal('${bid}')" class="text-white hover:text-blue-200 mr-3"><i class="fa-solid fa-pen-to-square"></i></button><button onclick="ui.deleteBox('${bid}')" class="text-red-400 hover:text-red-300"><i class="fa-solid fa-trash"></i></button>`;
+                // 戻るボタンを修正
+                document.getElementById('header-actions').innerHTML = `
+                    <button onclick="router.navigate('home')" class="bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded text-xs transition flex items-center gap-1 border border-white/20 mr-auto"><i class="fa-solid fa-arrow-left"></i> 戻る</button>
+                    <div class="flex gap-2 ml-2">
+                        <button onclick="ui.openBoxModal('${bid}')" class="text-white hover:text-blue-200"><i class="fa-solid fa-pen-to-square"></i></button>
+                        <button onclick="ui.deleteBox('${bid}')" class="text-red-400 hover:text-red-300"><i class="fa-solid fa-trash"></i></button>
+                    </div>`;
+                
                 let ls = [...this.db.getLuresByBoxId(bid)];
                 if (this.boxSortKey === 'sizeDesc') ls.sort((a, b) => (b.length || 0) - (a.length || 0));
                 if (this.boxSortKey === 'sizeAsc') ls.sort((a, b) => (a.length || 0) - (b.length || 0));
                 if (this.boxSortKey === 'weightDesc') ls.sort((a, b) => (b.weight || 0) - (a.weight || 0));
                 if (this.boxSortKey === 'nameAsc') ls.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
+                // 画像上のタグを削除、情報エリアに追加、日付を最終編集日に
                 c.innerHTML = `
                     <div class="bg-white rounded-lg shadow mb-6 overflow-hidden">
-                        <div class="h-48 bg-gray-200 relative group">${b.image ? `<img src="${b.image}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center"><i class="fa-solid fa-image text-4xl text-gray-300"></i></div>`}<div class="absolute bottom-2 left-2 flex gap-1 flex-wrap">${(b.tags || []).map(t => `<span class="bg-gray-800/70 text-white text-xs px-2 py-1 rounded">${t}</span>`).join('')}</div></div>
-                        <div class="p-4"><h2 class="font-bold text-lg mb-1">${b.note || '名称未設定'}</h2><p class="text-xs text-gray-500">登録日: ${Utils.formatDate(b.timestamp)}</p></div>
+                        <div class="h-48 bg-gray-200 relative group">
+                            ${b.image ? `<img src="${b.image}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center"><i class="fa-solid fa-image text-4xl text-gray-300"></i></div>`}
+                        </div>
+                        <div class="p-4">
+                            <h2 class="font-bold text-lg mb-2">${b.note || '名称未設定'}</h2>
+                            <div class="flex gap-1 flex-wrap mb-2">
+                                ${(b.tags || []).map(t => `<span class="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded inline-flex items-center justify-center border border-gray-200">${Utils.simplifyType(t)}</span>`).join('')}
+                            </div>
+                            <p class="text-xs text-gray-500 text-right">最終編集日: ${Utils.formatDate(b.lastModified || b.timestamp)}</p>
+                        </div>
                     </div>
                     <div class="flex justify-between items-center mb-2">
                         <h3 class="font-bold text-gray-700">登録ルアー (${ls.length})</h3>
@@ -189,13 +212,23 @@
                             const isLost = l.status === 'ロスト';
                             const isSink = l.sinkType && (l.sinkType.includes('S') || l.sinkType.includes('HS'));
                             const depthLabel = isSink ? (l.sinkRate ? `${l.sinkRate}m/s` : '') : (l.depth ? `${l.depth}m` : '');
-                            return `<div class="bg-white p-3 rounded shadow-sm border-l-4 ${isLost ? 'border-gray-400 bg-gray-50 opacity-70' : 'border-blue-500'} flex justify-between items-center" onclick="ui.openLureDetail('${l.id}')">
+                            
+                            // ランクによる色分け
+                            let borderClass = 'border-blue-500'; // Default
+                            if (l.rank === '1軍') borderClass = 'border-yellow-500';
+                            else if (l.rank === '2軍') borderClass = 'border-gray-400';
+                            else if (l.rank === '3軍') borderClass = 'border-orange-700';
+
+                            return `<div class="bg-white p-3 rounded shadow-sm border-l-4 ${isLost ? 'border-gray-400 bg-gray-50 opacity-70' : borderClass} flex justify-between items-center" onclick="ui.openLureDetail('${l.id}')">
                                 <div>
                                     <div class="text-xs text-gray-500 flex gap-2"><span>${l.maker}</span>${l.status && l.status !== '所持' ? `<span class="bg-gray-200 px-1 rounded text-[10px]">${l.status}</span>` : ''}</div>
-                                    <div class="font-bold text-sm ${isLost ? 'line-through text-gray-500' : ''}">${l.name}</div>
+                                    <div class="font-bold text-sm ${isLost ? 'line-through text-gray-500' : ''}">
+                                        ${l.name}
+                                        ${l.achievements ? '<i class="fa-solid fa-star text-yellow-500 ml-1"></i>' : ''}
+                                    </div>
                                     <div class="text-xs mt-1 text-gray-600 space-x-2"><span class="bg-gray-100 px-1 rounded">${l.type}</span><span>${l.length}mm</span><span>${l.weight}g</span>${depthLabel ? `<span>${depthLabel}</span>` : ''}${l.hookSize ? `<span class="text-xs border border-gray-300 px-1 rounded">#${l.hookSize}</span>` : ''}</div>
                                 </div>
-                                <div class="text-right"><div class="text-xs font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded mb-1 inline-block">${(l.sinkType || '').split(' ')[0]}</div><div class="text-xs text-gray-400">×${l.count}</div></div>
+                                <div class="text-right"><div class="text-xs font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded mb-1 inline-block">${Utils.simplifyType(l.sinkType)}</div><div class="text-xs text-gray-400">×${l.count}</div></div>
                             </div>`
                         }).join('')}
                     </div>`;
@@ -204,11 +237,28 @@
             
             renderAnalysis(c) {
                 document.getElementById('header-actions').innerHTML = ''; const tags = this.db.getAllTags();
+                const allLures = this.db.getAllLures();
+                const totalCount = allLures.reduce((sum, l) => sum + (Number(l.count) || 0), 0);
+                const typeCount = allLures.length;
+
                 c.innerHTML = `
                     <div class="space-y-4 pb-20">
+                        <!-- Summary Card -->
+                        <div class="bg-gradient-to-r from-blue-600 to-blue-400 rounded-lg shadow-lg p-4 text-white flex justify-around items-center">
+                            <div class="text-center">
+                                <div class="text-xs opacity-80 mb-1">登録ルアー総数</div>
+                                <div class="text-3xl font-bold">${totalCount}<span class="text-sm font-normal ml-1">個</span></div>
+                            </div>
+                            <div class="w-px h-10 bg-white/30"></div>
+                            <div class="text-center">
+                                <div class="text-xs opacity-80 mb-1">種類数</div>
+                                <div class="text-3xl font-bold">${typeCount}<span class="text-sm font-normal ml-1">種</span></div>
+                            </div>
+                        </div>
+
                         <div class="bg-white p-4 rounded-lg shadow">
                             <h3 class="font-bold text-gray-700 mb-3 text-sm"><i class="fa-solid fa-chart-line mr-2"></i>スペック分布</h3>
-                            <div class="mb-4 text-sm"><label class="block text-xs text-gray-500 mb-1">タグで絞り込み</label><select id="chart-filter" class="w-full bg-blue-50 border border-blue-200 rounded p-2 text-blue-900 font-bold" onchange="ui.updateChart()"><option value="all">すべてのルアーを表示</option>${tags.map(t => `<option value="${t}" ${this.analysisFilterTag === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+                            <div class="mb-4 text-sm"><label class="block text-xs text-gray-500 mb-1">タグで絞り込み</label><select id="chart-filter" class="w-full bg-blue-50 border border-blue-200 rounded p-2 text-blue-900 font-bold" onchange="ui.updateChart()"><option value="all">すべてのルアーを表示</option>${tags.map(t => `<option value="${t}" ${this.analysisFilterTag === t ? 'selected' : ''}>${Utils.simplifyType(t)}</option>`).join('')}</select></div>
                             <div class="flex gap-2 mb-4 text-sm"><div class="flex-1"><label class="block text-xs text-gray-500 mb-1">X軸</label><select id="chart-x" class="w-full bg-gray-50 border rounded p-1" onchange="ui.updateChart()"><option value="length" selected>長さ (mm)</option><option value="weight">重さ (g)</option><option value="depth">潜行深度 (m)</option><option value="sinkRate">沈降速度 (m/s)</option></select></div><div class="flex-1"><label class="block text-xs text-gray-500 mb-1">Y軸</label><select id="chart-y" class="w-full bg-gray-50 border rounded p-1" onchange="ui.updateChart()"><option value="length">長さ (mm)</option><option value="weight" selected>重さ (g)</option><option value="depth">潜行深度 (m)</option><option value="sinkRate">沈降速度 (m/s)</option></select></div></div>
                             <div class="relative w-full h-64"><canvas id="lureChart"></canvas></div>
                         </div>
@@ -235,7 +285,8 @@
                 const colors = { 'F (フローティング)': '#3b82f6', 'S (シンキング)': '#ef4444', 'SP (サスペンド)': '#eab308', 'HS (ヘビーシンキング)': '#9333ea', 'Unknown': '#9ca3af' };
                 types.forEach(t => {
                     datasets.push({
-                        label: t, data: ls.filter(l => (l.sinkType || 'Unknown') === t).map(l => ({ x: Number(l[xk] || 0), y: Number(l[yk] || 0), lure: l })),
+                        label: Utils.simplifyType(t), // ここも簡略化
+                        data: ls.filter(l => (l.sinkType || 'Unknown') === t).map(l => ({ x: Number(l[xk] || 0), y: Number(l[yk] || 0), lure: l })),
                         backgroundColor: colors[t] || colors['Unknown'], pointRadius: 6
                     });
                 });
@@ -245,13 +296,12 @@
                 // --- 棒グラフデータ作成 ---
                 const masterTypes = this.db.data.master.types;
                 const dataTypes = [...new Set(ls.map(l => l.type || '未設定'))];
-                // マスタ順を優先しつつ、データにしかないものも追加
                 const allTypes = [...new Set([...masterTypes, ...dataTypes])].filter(t => dataTypes.includes(t));
                 const allSinkTypes = Object.keys(colors);
 
                 const barDatasets = allSinkTypes.map(st => {
                     return {
-                        label: st.split(' ')[0], // F, S, SP等に短縮
+                        label: Utils.simplifyType(st), // ここも簡略化
                         data: allTypes.map(type => {
                             return ls
                                 .filter(l => (l.type || '未設定') === type && (l.sinkType || 'Unknown') === st)
@@ -338,7 +388,6 @@
                     <section class="bg-white p-4 rounded shadow"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-paintbrush mr-2"></i>表示設定</h3><div class="mb-4"><label class="block text-xs font-bold text-gray-600 mb-1">文字サイズ</label><div class="flex gap-2">${['small','medium','large'].map(v=>`<button onclick="ui.changeSetting('fontSize','${v}')" class="flex-1 py-2 rounded text-xs border ${s.fontSize===v?'bg-blue-600 text-white border-blue-600':'bg-gray-50 text-gray-600 border-gray-200'}">${v==='small'?'小':v==='medium'?'中':'大'}</button>`).join('')}</div></div><div class="mb-2"><label class="block text-xs font-bold text-gray-600 mb-1">背景色</label><div class="flex gap-2">${['#f3f4f6','#ffffff','#e0f2fe','#fff7ed'].map(x=>`<button onclick="ui.changeSetting('bgColor','${x}')" class="w-8 h-8 rounded-full border-2 ${s.bgColor===x?'border-blue-600 scale-110 shadow-md':'border-transparent'}" style="background-color:${x};"></button>`).join('')}</div></div></section>
                     <section class="bg-white p-4 rounded shadow"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-database mr-2"></i>データ管理</h3><div class="grid grid-cols-2 gap-3"><button onclick="db.exportData()" class="bg-green-600 text-white py-2 rounded text-sm hover:bg-green-700"><i class="fa-solid fa-file-export mr-1"></i>書き出し</button><label class="bg-orange-500 text-white py-2 rounded text-center text-sm hover:bg-orange-600 cursor-pointer"><i class="fa-solid fa-file-import mr-1"></i>読み込み<input type="file" class="hidden" onchange="ui.handleImport(this)"></label></div></section>
                     <section class="bg-white p-4 rounded shadow"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-list-check mr-2"></i>マスタ編集</h3><p class="text-[10px] text-gray-400 mb-2">※カンマ(,)区切りで入力してください</p>${this.renderMasterEditor('manufacturers','メーカー名',m.manufacturers)}${this.renderMasterEditor('types','ルアータイプ',m.types)}${this.renderMasterEditor('fields','フィールド',m.fields)}${this.renderMasterEditor('targets','対象魚',m.targets)}${this.renderMasterEditor('hooks','フックサイズ',m.hooks)}</section>
-                    <!-- 【追加】アプリの更新ボタン -->
                     <section class="bg-white p-4 rounded shadow mt-6">
                         <h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-rotate mr-2"></i>アプリの更新</h3>
                         <p class="text-xs text-gray-600 mb-3">最新の機能が反映されない場合は、キャッシュを削除して更新してください。<br><span class="text-red-500 font-bold">※ルアーデータは保持されます。</span></p>
@@ -365,7 +414,8 @@
             // --- Modals ---
             openBoxModal(bid=null) {
                 const m = this.db.data.master, isEdit = !!bid, box = isEdit ? this.db.getBox(bid) : { note: '', tags: [], image: null }, btags = box.tags || [];
-                const ctag = (t, items) => `<div class="mb-3"><label class="block text-xs font-bold mb-1 text-gray-500">${t}</label><div class="flex flex-wrap gap-2">${items.map(x => `<label class="inline-flex items-center"><input type="checkbox" value="${x}" class="hidden peer box-tag-input" ${btags.includes(x) ? 'checked' : ''}><span class="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full cursor-pointer peer-checked:bg-blue-500 peer-checked:text-white transition select-none">${x}</span></label>`).join('')}</div></div>`;
+                // タグの表記も簡略化
+                const ctag = (t, items) => `<div class="mb-3"><label class="block text-xs font-bold mb-1 text-gray-500">${t}</label><div class="flex flex-wrap gap-2">${items.map(x => `<label class="inline-flex items-center"><input type="checkbox" value="${x}" class="hidden peer box-tag-input" ${btags.includes(x) ? 'checked' : ''}><span class="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full cursor-pointer peer-checked:bg-blue-500 peer-checked:text-white transition select-none">${Utils.simplifyType(x)}</span></label>`).join('')}</div></div>`;
                 const c = `<div class="p-4"><h3 class="font-bold text-lg mb-4">${isEdit ? 'ボックス編集' : '新しいボックス'}</h3><div class="mb-4"><label class="block text-sm font-bold mb-1">写真</label><label class="block w-full h-32 border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 image-preview bg-center bg-cover bg-no-repeat" id="box-img-preview" style="${box.image ? `background-image:url(${box.image})` : ''}" data-base64="${box.image || ''}">${!box.image ? `<i class="fa-solid fa-camera text-2xl text-gray-400 mb-1"></i><span class="text-xs text-gray-400">タップして撮影/選択</span>` : ''}<input type="file" accept="image/*" class="hidden" onchange="ui.handleImagePreview(this, 'box-img-preview')"></label></div><div class="mb-4"><label class="block text-sm font-bold mb-1">メモ / タイトル</label><input type="text" id="box-note" class="w-full border rounded p-2" value="${box.note}"></div><div class="mb-4 max-h-60 overflow-y-auto border-t border-b py-2">${ctag('ルアータイプ', m.types)}${ctag('浮力タイプ', m.sinkTypes)}${ctag('フィールド', m.fields)}${ctag('対象魚', m.targets)}</div><div class="flex gap-2"><button onclick="ui.closeModal()" class="flex-1 bg-gray-200 text-gray-800 py-2 rounded">キャンセル</button><button onclick="ui.submitBox('${bid || ''}')" class="flex-1 bg-blue-600 text-white py-2 rounded font-bold">${isEdit ? '更新' : '登録'}</button></div></div>`;
                 this.showModal(c);
             }
@@ -373,8 +423,9 @@
             submitBox(bid) {
                 const img = document.getElementById('box-img-preview').dataset.base64 || null, note = document.getElementById('box-note').value, tags = Array.from(document.querySelectorAll('.box-tag-input:checked')).map(x => x.value);
                 if (!img && !note) { alert('写真かメモのどちらかは必須です'); return; }
-                if (bid) { const old = this.db.getBox(bid); this.db.updateBox({ ...old, image: img, note: note, tags: tags }); Utils.showToast('ボックスを更新しました'); }
-                else { this.db.addBox({ id: Utils.uuid(), image: img, note: note, tags: tags, timestamp: Date.now() }); Utils.showToast('ボックスを作成しました'); }
+                const now = Date.now();
+                if (bid) { const old = this.db.getBox(bid); this.db.updateBox({ ...old, image: img, note: note, tags: tags, lastModified: now }); Utils.showToast('ボックスを更新しました'); }
+                else { this.db.addBox({ id: Utils.uuid(), image: img, note: note, tags: tags, timestamp: now, lastModified: now }); Utils.showToast('ボックスを作成しました'); }
                 this.closeModal(); bid ? this.renderBoxDetail(document.getElementById('main-content'), bid) : this.renderHome(document.getElementById('main-content'));
             }
             deleteBox(id) { if (confirm('このボックスと中のルアーデータを全て削除しますか？')) { this.db.deleteBox(id); router.navigate('home'); } }
@@ -388,13 +439,16 @@
                     l = this.db.data.lures.find(x => x.id === editLureId);
                 } else {
                     const last = !copy && sessionStorage.getItem('last_lure') ? JSON.parse(sessionStorage.getItem('last_lure')) : null;
-                    l = copy || last || { name: '', maker: '', type: '', sinkType: 'F (フローティング)', length: '', weight: '', depth: '', sinkRate: '', color: '', count: 1, hookSize: '', status: '所持', purchaseDate: Utils.getTodayString() };
+                    l = copy || last || { name: '', maker: '', type: '', sinkType: 'F (フローティング)', length: '', weight: '', depth: '', sinkRate: '', color: '', count: 1, hookSize: '', status: '所持', purchaseDate: Utils.getTodayString(), achievements: '', rank: '指定なし' };
                 }
+                
+                // 選択肢の表記簡略化
+                const sinkOptions = m.sinkTypes.map(x => `<option value="${x}" ${l.sinkType === x ? 'selected' : ''}>${Utils.simplifyType(x)}</option>`).join('');
                 
                 const c = `
                     <div class="p-4"><h3 class="font-bold text-lg mb-4">${isEdit ? 'ルアー情報編集' : 'ルアー詳細登録'}</h3>
                     <div class="grid grid-cols-2 gap-3 mb-3"><div><label class="text-xs text-gray-500">メーカー</label><select id="lure-maker" class="w-full border p-1 rounded"><option value="">選択</option>${m.manufacturers.map(x => `<option ${l.maker === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div><div><label class="text-xs text-gray-500">商品名</label><input type="text" id="lure-name" class="w-full border p-1 rounded" value="${l.name}"></div></div>
-                    <div class="grid grid-cols-2 gap-3 mb-3"><div><label class="text-xs text-gray-500">タイプ</label><select id="lure-type" class="w-full border p-1 rounded">${m.types.map(x => `<option ${l.type === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div><div><label class="text-xs text-gray-500">浮力</label><select id="lure-sink" class="w-full border p-1 rounded" onchange="ui.toggleDepthInputs()">${m.sinkTypes.map(x => `<option ${l.sinkType === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div></div>
+                    <div class="grid grid-cols-2 gap-3 mb-3"><div><label class="text-xs text-gray-500">タイプ</label><select id="lure-type" class="w-full border p-1 rounded">${m.types.map(x => `<option ${l.type === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div><div><label class="text-xs text-gray-500">浮力</label><select id="lure-sink" class="w-full border p-1 rounded" onchange="ui.toggleDepthInputs()">${sinkOptions}</select></div></div>
                     <div class="grid grid-cols-3 gap-2 mb-3">
                         <div><label class="text-xs text-gray-500">長さ(mm)</label><input type="number" inputmode="decimal" step="5" min="0" id="lure-len" class="w-full border p-1 rounded" value="${l.length}"></div>
                         <div><label class="text-xs text-gray-500">重さ(g)</label><input type="number" inputmode="decimal" step="0.1" min="0" id="lure-wgt" class="w-full border p-1 rounded" value="${l.weight}"></div>
@@ -402,6 +456,13 @@
                         <div id="input-group-sinkrate" style="display:none;"><label class="text-xs text-gray-500">沈降速度(m/s)</label><input type="number" inputmode="decimal" step="0.1" min="0" id="lure-sink-rate" class="w-full border p-1 rounded" value="${l.sinkRate || ''}"></div>
                     </div>
                     <div class="grid grid-cols-3 gap-2 mb-3"><div><label class="text-xs text-gray-500">フック</label><select id="lure-hook" class="w-full border p-1 rounded"><option value="">選択</option>${(m.hooks || []).map(h => `<option ${l.hookSize === h ? 'selected' : ''}>${h}</option>`).join('')}</select></div><div class="col-span-2"><label class="text-xs text-gray-500">状態</label><select id="lure-status" class="w-full border p-1 rounded"><option ${l.status === '所持' ? 'selected' : ''}>所持</option><option ${l.status === 'ロスト' ? 'selected' : ''}>ロスト</option><option ${l.status === '購入予定' ? 'selected' : ''}>購入予定</option></select></div></div>
+                    
+                    <!-- 追加: ランクと実績 -->
+                    <div class="grid grid-cols-3 gap-2 mb-3">
+                        <div><label class="text-xs text-gray-500">ランク</label><select id="lure-rank" class="w-full border p-1 rounded"><option value="指定なし" ${!l.rank || l.rank === '指定なし' ? 'selected' : ''}>指定なし</option><option value="1軍" ${l.rank === '1軍' ? 'selected' : ''}>1軍</option><option value="2軍" ${l.rank === '2軍' ? 'selected' : ''}>2軍</option><option value="3軍" ${l.rank === '3軍' ? 'selected' : ''}>3軍</option></select></div>
+                        <div class="col-span-2"><label class="text-xs text-gray-500">実績 (釣れた魚種)</label><input type="text" id="lure-achieve" class="w-full border p-1 rounded" placeholder="例: シーバス, クロダイ" value="${l.achievements || ''}"></div>
+                    </div>
+
                     <div class="grid grid-cols-2 gap-3 mb-4"><div><label class="text-xs text-gray-500">カラー</label><input type="text" id="lure-color" class="w-full border p-1 rounded" value="${l.color}"></div><div><label class="text-xs text-gray-500">購入日</label><input type="date" id="lure-date" class="w-full border p-1 rounded" value="${l.purchaseDate || Utils.getTodayString()}"></div></div>
                     <div class="mb-4"><label class="text-xs text-gray-500">個数</label><input type="number" inputmode="numeric" min="0" id="lure-count" class="w-full border p-1 rounded" value="${l.count}"></div>
                     <div class="flex gap-2"><button onclick="ui.closeModal()" class="flex-1 bg-gray-200 py-2 rounded">キャンセル</button><button onclick="ui.submitLure('${bid}', '${editLureId || ''}')" class="flex-1 bg-blue-600 text-white py-2 rounded">${isEdit ? '更新' : '登録'}</button></div></div>`;
@@ -441,7 +502,9 @@
                     count: document.getElementById('lure-count').value,
                     hookSize: document.getElementById('lure-hook').value,
                     status: document.getElementById('lure-status').value,
-                    purchaseDate: document.getElementById('lure-date').value
+                    purchaseDate: document.getElementById('lure-date').value,
+                    rank: document.getElementById('lure-rank').value,
+                    achievements: document.getElementById('lure-achieve').value
                 };
                 if(editId) {
                     this.db.updateLure(l);
@@ -460,10 +523,12 @@
                 const depthInfo = isSink ? `沈降: ${l.sinkRate || '-'} m/s` : `深度: ${l.depth || '-'} m`;
                 
                 const c = `<div class="p-4 text-center">
-                    <h3 class="font-bold mb-1 text-lg">${l.name}</h3>
+                    <h3 class="font-bold mb-1 text-lg">${l.name} ${l.achievements ? '<i class="fa-solid fa-star text-yellow-500 ml-1"></i>' : ''}</h3>
                     <p class="text-sm text-gray-600 mb-2">${l.maker} / ${l.type}</p>
+                    ${l.rank && l.rank !== '指定なし' ? `<span class="inline-block bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs mb-2 border">ランク: ${l.rank}</span>` : ''}
+                    
                     <div class="bg-gray-50 rounded p-2 mb-4 text-sm grid grid-cols-2 gap-2 text-left">
-                        <span>タイプ: ${l.sinkType}</span>
+                        <span>タイプ: ${Utils.simplifyType(l.sinkType)}</span>
                         <span>カラー: ${l.color}</span>
                         <span>長さ: ${l.length}mm</span>
                         <span>重さ: ${l.weight}g</span>
@@ -472,6 +537,8 @@
                         <span>状態: ${l.status}</span>
                         <span>購入: ${l.purchaseDate}</span>
                     </div>
+                    ${l.achievements ? `<div class="mb-4 text-left bg-yellow-50 p-2 rounded border border-yellow-200"><div class="text-xs text-yellow-800 font-bold mb-1"><i class="fa-solid fa-trophy mr-1"></i>実績</div><div class="text-sm text-gray-700">${l.achievements}</div></div>` : ''}
+
                     <div class="flex flex-col gap-2">
                         <button onclick="ui.closeModal(); setTimeout(()=>ui.openLureForm('${l.boxId}', null, '${l.id}'), 200)" class="bg-green-600 text-white py-2 rounded font-bold"><i class="fa-solid fa-pen mr-1"></i>編集する</button>
                         <button onclick="ui.copyAndAdd('${lid}')" class="bg-blue-100 text-blue-800 py-2 rounded">スペックをコピーして新規</button>
