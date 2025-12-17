@@ -24,12 +24,22 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
-        :root { --app-bg-color: #f3f4f6; --app-font-scale: 100%; }
+        :root { --app-bg-color: #f3f4f6; --app-font-scale: 100%; --app-bg-image: none; }
         /* タッチデバイスでの選択やメニュー表示を防止 */
         body { -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; background-color: #333; padding-bottom: env(safe-area-inset-bottom, 80px); font-size: var(--app-font-scale); -webkit-touch-callout: none; }
         img { pointer-events: none; -webkit-user-drag: none; } /* 画像のドラッグ、イベントを無効化 */
         
-        #app { background-color: var(--app-bg-color); transition: background-color 0.3s ease; }
+        #app { 
+            background-color: var(--app-bg-color); 
+            background-image: var(--app-bg-image);
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed; /* 背景を固定 */
+            transition: background-color 0.3s ease; 
+        }
+        /* 背景画像がある場合にコンテンツの可読性を上げるためのオーバーレイが必要ならここに追加 */
+        
         ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
         .image-preview { background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 20.5V18H0v-2h20v-2H0v-2h20v-2H0V8h20V6H0V4h20V2H0V0h22v22h-2z' fill='%239C92AC' fill-opacity='0.1' fill-rule='evenodd'/%3E%3C/svg%3E"); }
@@ -156,7 +166,16 @@
                 this.applyTheme(); 
             }
             applyTheme() {
-                const s = this.db.data.settings; const r = document.documentElement; r.style.setProperty('--app-bg-color', s.bgColor);
+                const s = this.db.data.settings; 
+                const r = document.documentElement; 
+                
+                // 背景色
+                r.style.setProperty('--app-bg-color', s.bgColor);
+                
+                // 背景画像 (存在すれば設定、なければnone)
+                r.style.setProperty('--app-bg-image', s.bgImage ? `url(${s.bgImage})` : 'none');
+
+                // フォントサイズ
                 let scale = '100%'; 
                 if (s.fontSize === 'small') scale = '85%'; 
                 if (s.fontSize === 'large') scale = '115%';
@@ -338,9 +357,62 @@
             }
             renderSettings(c) {
                 document.getElementById('header-actions').innerHTML = ''; const m = this.db.data.master, s = this.db.data.settings;
-                c.innerHTML = `<div class="space-y-6 pb-20"><section class="bg-white p-4 rounded shadow"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-paintbrush mr-2"></i>表示設定</h3><div class="mb-4"><label class="block text-xs font-bold text-gray-600 mb-1">文字サイズ</label><div class="flex gap-2">${['x-small','small','medium','large'].map(v=>`<button onclick="ui.changeSetting('fontSize','${v}')" class="flex-1 py-2 rounded text-xs border ${s.fontSize===v?'bg-blue-600 text-white border-blue-600':'bg-gray-50 text-gray-600 border-gray-200'}">${v==='x-small'?'極小':v==='small'?'小':v==='medium'?'中':'大'}</button>`).join('')}</div></div><div class="mb-2"><label class="block text-xs font-bold text-gray-600 mb-1">背景色</label><div class="flex gap-2">${['#f3f4f6','#ffffff','#e0f2fe','#fff7ed'].map(x=>`<button onclick="ui.changeSetting('bgColor','${x}')" class="w-8 h-8 rounded-full border-2 ${s.bgColor===x?'border-blue-600 scale-110 shadow-md':'border-transparent'}" style="background-color:${x};"></button>`).join('')}</div></div></section><section class="bg-white p-4 rounded shadow"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-database mr-2"></i>データ管理</h3><div class="grid grid-cols-2 gap-3"><button onclick="db.exportData()" class="bg-green-600 text-white py-2 rounded text-sm hover:bg-green-700"><i class="fa-solid fa-file-export mr-1"></i>書き出し</button><label class="bg-orange-500 text-white py-2 rounded text-center text-sm hover:bg-orange-600 cursor-pointer"><i class="fa-solid fa-file-import mr-1"></i>読み込み<input type="file" class="hidden" onchange="ui.handleImport(this)"></label></div></section><section class="bg-white p-4 rounded shadow"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-list-check mr-2"></i>マスタ編集</h3><p class="text-[10px] text-gray-400 mb-2">※カンマ(,)区切りで入力してください</p>${this.renderMasterEditor('manufacturers','メーカー名',m.manufacturers)}${this.renderMasterEditor('types','ルアータイプ',m.types)}${this.renderMasterEditor('fields','フィールド',m.fields)}${this.renderMasterEditor('targets','対象魚',m.targets)}${this.renderMasterEditor('hooks','フックサイズ',m.hooks)}</section><section class="bg-white p-4 rounded shadow mt-6"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-rotate mr-2"></i>アプリの更新</h3><p class="text-xs text-gray-600 mb-3">最新の機能が反映されない場合は、キャッシュを削除して更新してください。<br><span class="text-red-500 font-bold">※ルアーデータは保持されます。</span></p><button onclick="ui.forceUpdate()" class="w-full bg-gray-800 text-white py-3 rounded font-bold hover:bg-gray-700 transition"><i class="fa-solid fa-sync mr-2"></i>最新の状態に更新する</button></section></div>`;
+                c.innerHTML = `
+                <div class="space-y-6 pb-20">
+                    <section class="bg-white p-4 rounded shadow">
+                        <h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-paintbrush mr-2"></i>表示設定</h3>
+                        <div class="mb-4">
+                            <label class="block text-xs font-bold text-gray-600 mb-1">文字サイズ</label>
+                            <div class="flex gap-2">
+                                ${['x-small','small','medium','large'].map(v=>`<button onclick="ui.changeSetting('fontSize','${v}')" class="flex-1 py-2 rounded text-xs border ${s.fontSize===v?'bg-blue-600 text-white border-blue-600':'bg-gray-50 text-gray-600 border-gray-200'}">${v==='x-small'?'極小':v==='small'?'小':v==='medium'?'中':'大'}</button>`).join('')}
+                            </div>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-xs font-bold text-gray-600 mb-1">背景色</label>
+                            <div class="flex gap-2">
+                                ${['#f3f4f6','#ffffff','#e0f2fe','#fff7ed'].map(x=>`<button onclick="ui.changeSetting('bgColor','${x}')" class="w-8 h-8 rounded-full border-2 ${s.bgColor===x?'border-blue-600 scale-110 shadow-md':'border-transparent'}" style="background-color:${x};"></button>`).join('')}
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="block text-xs font-bold text-gray-600 mb-1">背景画像</label>
+                            <div class="flex items-center gap-3">
+                                <label class="cursor-pointer bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-2 rounded text-xs flex items-center gap-1 transition">
+                                    <i class="fa-solid fa-image"></i> 画像を選択
+                                    <input type="file" accept="image/*" class="hidden" onchange="ui.handleBgImage(this)">
+                                </label>
+                                ${s.bgImage ? `<button onclick="ui.deleteBgImage()" class="text-red-500 text-xs hover:underline"><i class="fa-solid fa-trash mr-1"></i>削除</button>` : ''}
+                            </div>
+                            ${s.bgImage ? `<div class="mt-2 text-xs text-blue-500"><i class="fa-solid fa-check mr-1"></i>画像が設定されています</div>` : ''}
+                        </div>
+                    </section>
+                    <section class="bg-white p-4 rounded shadow"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-database mr-2"></i>データ管理</h3><div class="grid grid-cols-2 gap-3"><button onclick="db.exportData()" class="bg-green-600 text-white py-2 rounded text-sm hover:bg-green-700"><i class="fa-solid fa-file-export mr-1"></i>書き出し</button><label class="bg-orange-500 text-white py-2 rounded text-center text-sm hover:bg-orange-600 cursor-pointer"><i class="fa-solid fa-file-import mr-1"></i>読み込み<input type="file" class="hidden" onchange="ui.handleImport(this)"></label></div></section>
+                    <section class="bg-white p-4 rounded shadow"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-list-check mr-2"></i>マスタ編集</h3><p class="text-[10px] text-gray-400 mb-2">※カンマ(,)区切りで入力してください</p>${this.renderMasterEditor('manufacturers','メーカー名',m.manufacturers)}${this.renderMasterEditor('types','ルアータイプ',m.types)}${this.renderMasterEditor('fields','フィールド',m.fields)}${this.renderMasterEditor('targets','対象魚',m.targets)}${this.renderMasterEditor('hooks','フックサイズ',m.hooks)}</section>
+                    <section class="bg-white p-4 rounded shadow mt-6"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-rotate mr-2"></i>アプリの更新</h3><p class="text-xs text-gray-600 mb-3">最新の機能が反映されない場合は、キャッシュを削除して更新してください。<br><span class="text-red-500 font-bold">※ルアーデータは保持されます。</span></p><button onclick="ui.forceUpdate()" class="w-full bg-gray-800 text-white py-3 rounded font-bold hover:bg-gray-700 transition"><i class="fa-solid fa-sync mr-2"></i>最新の状態に更新する</button></section>
+                </div>`;
             }
             changeSetting(k, v) { this.db.updateSettings({[k]:v}); this.applyTheme(); this.renderSettings(document.getElementById('main-content')); }
+            async handleBgImage(input) {
+                if (input.files && input.files[0]) {
+                    try {
+                        // 背景用なので少し大きめのサイズ(1200px)で保存
+                        const base64 = await Utils.compressImage(input.files[0], 1200, 0.7);
+                        this.db.updateSettings({ bgImage: base64 });
+                        this.applyTheme();
+                        this.renderSettings(document.getElementById('main-content'));
+                        Utils.showToast('背景画像を設定しました');
+                    } catch (e) {
+                        alert('画像の読み込みに失敗しました');
+                    }
+                }
+            }
+            deleteBgImage() {
+                if(confirm('背景画像を削除しますか？')) {
+                    this.db.updateSettings({ bgImage: null });
+                    this.applyTheme();
+                    this.renderSettings(document.getElementById('main-content'));
+                    Utils.showToast('背景画像を削除しました');
+                }
+            }
             renderMasterEditor(k, t, l) { return `<div class="mb-4"><label class="block text-xs font-bold text-gray-600 mb-1">${t}</label><textarea id="master-${k}" class="w-full text-xs border rounded p-2 bg-gray-50" rows="3">${l.join(', ')}</textarea><button onclick="ui.saveMaster('${k}')" class="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-1 rounded mt-1">更新</button></div>`; }
             saveMaster(k) { const v = document.getElementById(`master-${k}`).value; this.db.updateMaster(k, v.split(',').map(s => s.trim()).filter(s => s)); Utils.showToast(`${k}を更新しました`); }
             handleImport(i) { const f = i.files[0]; if(!f) return; const r = new FileReader(); r.onload=e => { if(this.db.importData(e.target.result)) { alert('データを復元しました'); location.reload(); } }; r.readAsText(f); }
