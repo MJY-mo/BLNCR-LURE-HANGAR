@@ -25,18 +25,15 @@
     
     <style>
         :root { --app-bg-color: #f3f4f6; --app-font-scale: 100%; --app-bg-image: none; --app-bg-opacity: 1; }
-        /* タッチデバイスでの選択やメニュー表示を防止 */
         body { -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; background-color: #333; padding-bottom: env(safe-area-inset-bottom, 80px); font-size: var(--app-font-scale); -webkit-touch-callout: none; }
-        img { pointer-events: none; -webkit-user-drag: none; } /* 画像のドラッグ、イベントを無効化 */
+        img { pointer-events: none; -webkit-user-drag: none; }
         
         #app { 
             background-color: var(--app-bg-color); 
-            /* background-image は ::before で処理するためここでは削除 */
             position: relative;
             transition: background-color 0.3s ease; 
         }
 
-        /* 背景画像表示用のレイヤー */
         #app::before {
             content: "";
             position: absolute;
@@ -53,7 +50,6 @@
             z-index: 0;
         }
 
-        /* コンテンツが背景の下に隠れないように z-index を指定 */
         #main-content {
             position: relative;
             z-index: 1;
@@ -120,7 +116,6 @@
                 this.data = this.load() || this.getInitialData();
                 if(!this.data.master.hooks) { this.data.master.hooks = ['#14', '#12', '#10', '#8', '#6', '#5', '#4', '#3', '#2', '#1', '1/0', '2/0', '3/0', '4/0', '5/0']; this.save(); }
                 if(!this.data.settings) { this.data.settings = { fontSize: 'medium', bgColor: '#f3f4f6', bgOpacity: 1 }; this.save(); }
-                // 既存データへの後方互換性：bgOpacityがない場合は追加
                 if(this.data.settings && typeof this.data.settings.bgOpacity === 'undefined') { this.data.settings.bgOpacity = 1; this.save(); }
             }
             getInitialData() {
@@ -159,8 +154,17 @@
         }
 
         class AppRouter {
-            constructor(ui) { this.ui = ui; this.currentRoute = 'home'; }
-            navigate(r, p = null) {
+            constructor(ui) { 
+                this.ui = ui; 
+                this.currentRoute = 'home';
+                // ブラウザの戻る・進むを監視
+                window.addEventListener('popstate', (e) => this.handlePopState(e));
+            }
+            
+            navigate(r, p = null, fromPopState = false) {
+                if (!fromPopState) {
+                    history.pushState({ route: r, params: p }, "");
+                }
                 this.currentRoute = r;
                 document.querySelectorAll('.nav-btn').forEach(b => {
                     if (b.dataset.target === r) { b.classList.add('text-blue-600'); b.classList.remove('text-gray-500'); }
@@ -175,6 +179,21 @@
                     case 'settings': this.ui.renderSettings(c); break;
                 }
             }
+
+            handlePopState(event) {
+                // モーダルが開いている場合、スマホの戻るボタンでモーダルを閉じる
+                if (this.ui.isModalOpen) {
+                    this.ui.closeModal(); 
+                    return;
+                }
+                
+                const state = event.state;
+                if (state && state.route) {
+                    this.navigate(state.route, state.params, true);
+                } else {
+                    this.navigate('home', null, true);
+                }
+            }
         }
 
         class UIManager {
@@ -184,22 +203,14 @@
                 this.analysisMode = 'spec'; 
                 this.analysisFilterTag = 'all';
                 this.analysisFishTarget = 'all';
+                this.isModalOpen = false;
                 this.applyTheme(); 
             }
             applyTheme() {
-                const s = this.db.data.settings; 
-                const r = document.documentElement; 
-                
-                // 背景色
+                const s = this.db.data.settings; const r = document.documentElement; 
                 r.style.setProperty('--app-bg-color', s.bgColor);
-                
-                // 背景画像 (存在すれば設定、なければnone)
                 r.style.setProperty('--app-bg-image', s.bgImage ? `url(${s.bgImage})` : 'none');
-                
-                // 背景透過度
                 r.style.setProperty('--app-bg-opacity', s.bgOpacity !== undefined ? s.bgOpacity : 1);
-
-                // フォントサイズ
                 let scale = '100%'; 
                 if (s.fontSize === 'small') scale = '85%'; 
                 if (s.fontSize === 'large') scale = '115%';
@@ -226,22 +237,15 @@
                 });
                 c.appendChild(grid);
                 Sortable.create(grid, { 
-                    animation: 150, 
-                    delay: 300, 
-                    delayOnTouchOnly: true, 
-                    touchStartThreshold: 5, 
-                    ghostClass: 'sortable-ghost', 
-                    chosenClass: 'sortable-chosen', 
-                    dragClass: 'sortable-drag',
-                    forceFallback: true,
-                    fallbackTolerance: 5,
+                    animation: 150, delay: 300, delayOnTouchOnly: true, touchStartThreshold: 5, ghostClass: 'sortable-ghost', chosenClass: 'sortable-chosen', dragClass: 'sortable-drag', forceFallback: true, fallbackTolerance: 5,
                     onEnd: (evt) => { const newOrder = Array.from(grid.children).map(child => child.dataset.id); this.db.reorderBoxes(newOrder); } 
                 });
             }
             renderBoxDetail(c, bid) {
                 const b = this.db.getBox(bid); if (!b) return router.navigate('home');
+                // 戻るボタンの動作を history.back() に統一
                 document.getElementById('header-actions').innerHTML = `
-                    <button onclick="router.navigate('home')" class="bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded text-xs transition flex items-center gap-1 border border-white/20 whitespace-nowrap"><i class="fa-solid fa-arrow-left"></i> 戻る</button>`;
+                    <button onclick="history.back()" class="bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded text-xs transition flex items-center gap-1 border border-white/20 whitespace-nowrap"><i class="fa-solid fa-arrow-left"></i> 戻る</button>`;
                 
                 let ls = [...this.db.getLuresByBoxId(bid)];
                 if (this.boxSortKey === 'sizeDesc') ls.sort((a, b) => (b.length || 0) - (a.length || 0));
@@ -418,50 +422,132 @@
                     <section class="bg-white p-4 rounded shadow mt-6"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-rotate mr-2"></i>アプリの更新</h3><p class="text-xs text-gray-600 mb-3">最新の機能が反映されない場合は、キャッシュを削除して更新してください。<br><span class="text-red-500 font-bold">※ルアーデータは保持されます。</span></p><button onclick="ui.forceUpdate()" class="w-full bg-gray-800 text-white py-3 rounded font-bold hover:bg-gray-700 transition"><i class="fa-solid fa-sync mr-2"></i>最新の状態に更新する</button></section>
                 </div>`;
             }
-            changeSetting(k, v) { this.db.updateSettings({[k]:v}); this.applyTheme(); } // settings再描画はスライダー操作でチラつくのでapplyThemeのみにするか、必要に応じて呼ぶ
+            changeSetting(k, v) { this.db.updateSettings({[k]:v}); this.applyTheme(); }
             async handleBgImage(input) {
                 if (input.files && input.files[0]) {
                     try {
                         const base64 = await Utils.compressImage(input.files[0], 1200, 0.7);
-                        this.db.updateSettings({ bgImage: base64, bgOpacity: 1 }); // 画像設定時は不透明度リセット
+                        this.db.updateSettings({ bgImage: base64, bgOpacity: 1 });
                         this.applyTheme();
                         this.renderSettings(document.getElementById('main-content'));
                         Utils.showToast('背景画像を設定しました');
-                    } catch (e) {
-                        alert('画像の読み込みに失敗しました');
-                    }
+                    } catch (e) { alert('画像の読み込みに失敗しました'); }
                 }
             }
-            deleteBgImage() {
-                if(confirm('背景画像を削除しますか？')) {
-                    this.db.updateSettings({ bgImage: null });
-                    this.applyTheme();
-                    this.renderSettings(document.getElementById('main-content'));
-                    Utils.showToast('背景画像を削除しました');
-                }
-            }
+            deleteBgImage() { if(confirm('背景画像を削除しますか？')) { this.db.updateSettings({ bgImage: null }); this.applyTheme(); this.renderSettings(document.getElementById('main-content')); Utils.showToast('背景画像を削除しました'); } }
             renderMasterEditor(k, t, l) { return `<div class="mb-4"><label class="block text-xs font-bold text-gray-600 mb-1">${t}</label><textarea id="master-${k}" class="w-full text-xs border rounded p-2 bg-gray-50" rows="3">${l.join(', ')}</textarea><button onclick="ui.saveMaster('${k}')" class="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-1 rounded mt-1">更新</button></div>`; }
             saveMaster(k) { const v = document.getElementById(`master-${k}`).value; this.db.updateMaster(k, v.split(',').map(s => s.trim()).filter(s => s)); Utils.showToast(`${k}を更新しました`); }
             handleImport(i) { const f = i.files[0]; if(!f) return; const r = new FileReader(); r.onload=e => { if(this.db.importData(e.target.result)) { alert('データを復元しました'); location.reload(); } }; r.readAsText(f); }
             async forceUpdate() { if(!confirm('アプリを最新の状態に更新しますか？\n(登録データは保持されます)')) return; try { if ('serviceWorker' in navigator) { const regs = await navigator.serviceWorker.getRegistrations(); for (let r of regs) await r.unregister(); } const keys = await caches.keys(); await Promise.all(keys.map(k => caches.delete(k))); alert('キャッシュを削除しました。再読み込みします。'); window.location.reload(true); } catch (e) { console.error(e); alert('更新に失敗しました。'); } }
-            openBoxModal(bid=null) { const m = this.db.data.master, isEdit = !!bid, box = isEdit ? this.db.getBox(bid) : { note: '', tags: [], image: null }, btags = box.tags || []; const ctag = (t, items) => `<div class="mb-3"><label class="block text-xs font-bold mb-1 text-gray-500">${t}</label><div class="flex flex-wrap gap-2">${items.map(x => `<label class="inline-flex items-center"><input type="checkbox" value="${x}" class="hidden peer box-tag-input" ${btags.includes(x) ? 'checked' : ''}><span class="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full cursor-pointer peer-checked:bg-blue-500 peer-checked:text-white transition select-none">${Utils.simplifyType(x)}</span></label>`).join('')}</div></div>`; const c = `<div class="p-4"><h3 class="font-bold text-lg mb-4">${isEdit ? 'ボックス編集' : '新しいボックス'}</h3><div class="mb-4"><label class="block text-sm font-bold mb-1">写真</label><label class="block w-full h-32 border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 image-preview bg-center bg-cover bg-no-repeat" id="box-img-preview" style="${box.image ? `background-image:url(${box.image})` : ''}" data-base64="${box.image || ''}">${!box.image ? `<i class="fa-solid fa-camera text-2xl text-gray-400 mb-1"></i><span class="text-xs text-gray-400">タップして撮影/選択</span>` : ''}<input type="file" accept="image/*" class="hidden" onchange="ui.handleImagePreview(this, 'box-img-preview')"></label></div><div class="mb-4"><label class="block text-sm font-bold mb-1">メモ / タイトル</label><input type="text" id="box-note" class="w-full border rounded p-2" value="${box.note}"></div><div class="mb-4 max-h-60 overflow-y-auto border-t border-b py-2">${ctag('ルアータイプ', m.types)}${ctag('浮力タイプ', m.sinkTypes)}${ctag('フィールド', m.fields)}${ctag('対象魚', m.targets)}</div><div class="flex gap-2"><button onclick="ui.closeModal()" class="flex-1 bg-gray-200 text-gray-800 py-2 rounded">キャンセル</button><button onclick="ui.submitBox('${bid || ''}')" class="flex-1 bg-blue-600 text-white py-2 rounded font-bold">${isEdit ? '更新' : '登録'}</button></div></div>`; this.showModal(c); }
+            
+            // --- Modals ---
+            openBoxModal(bid=null) { 
+                const m = this.db.data.master, isEdit = !!bid, box = isEdit ? this.db.getBox(bid) : { note: '', tags: [], image: null }, btags = box.tags || []; 
+                const ctag = (t, items) => `<div class="mb-3"><label class="block text-xs font-bold mb-1 text-gray-500">${t}</label><div class="flex flex-wrap gap-2">${items.map(x => `<label class="inline-flex items-center"><input type="checkbox" value="${x}" class="hidden peer box-tag-input" ${btags.includes(x) ? 'checked' : ''}><span class="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full cursor-pointer peer-checked:bg-blue-500 peer-checked:text-white transition select-none">${Utils.simplifyType(x)}</span></label>`).join('')}</div></div>`; 
+                const c = `<div class="p-4"><h3 class="font-bold text-lg mb-4">${isEdit ? 'ボックス編集' : '新しいボックス'}</h3><div class="mb-4"><label class="block text-sm font-bold mb-1">写真</label><label class="block w-full h-32 border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 image-preview bg-center bg-cover bg-no-repeat" id="box-img-preview" style="${box.image ? `background-image:url(${box.image})` : ''}" data-base64="${box.image || ''}">${!box.image ? `<i class="fa-solid fa-camera text-2xl text-gray-400 mb-1"></i><span class="text-xs text-gray-400">タップして撮影/選択</span>` : ''}<input type="file" accept="image/*" class="hidden" onchange="ui.handleImagePreview(this, 'box-img-preview')"></label></div><div class="mb-4"><label class="block text-sm font-bold mb-1">メモ / タイトル</label><input type="text" id="box-note" class="w-full border rounded p-2" value="${box.note}"></div><div class="mb-4 max-h-60 overflow-y-auto border-t border-b py-2">${ctag('ルアータイプ', m.types)}${ctag('浮力タイプ', m.sinkTypes)}${ctag('フィールド', m.fields)}${ctag('対象魚', m.targets)}</div><div class="flex gap-2"><button onclick="history.back()" class="flex-1 bg-gray-200 text-gray-800 py-2 rounded">キャンセル</button><button onclick="ui.submitBox('${bid || ''}')" class="flex-1 bg-blue-600 text-white py-2 rounded font-bold">${isEdit ? '更新' : '登録'}</button></div></div>`; 
+                this.showModal(c); 
+            }
             async handleImagePreview(i, tid) { if (i.files && i.files[0]) { const c = await Utils.compressImage(i.files[0]); const el = document.getElementById(tid); el.style.backgroundImage = `url(${c})`; el.dataset.base64 = c; el.innerHTML = ''; } }
-            submitBox(bid) { const img = document.getElementById('box-img-preview').dataset.base64 || null, note = document.getElementById('box-note').value, tags = Array.from(document.querySelectorAll('.box-tag-input:checked')).map(x => x.value); if (!img && !note) { alert('写真かメモのどちらかは必須です'); return; } const now = Date.now(); if (bid) { const old = this.db.getBox(bid); this.db.updateBox({ ...old, image: img, note: note, tags: tags, lastModified: now }); Utils.showToast('ボックスを更新しました'); } else { this.db.addBox({ id: Utils.uuid(), image: img, note: note, tags: tags, timestamp: now, lastModified: now }); Utils.showToast('ボックスを作成しました'); } this.closeModal(); bid ? this.renderBoxDetail(document.getElementById('main-content'), bid) : this.renderHome(document.getElementById('main-content')); }
+            
+            submitBox(bid) { 
+                const img = document.getElementById('box-img-preview').dataset.base64 || null, note = document.getElementById('box-note').value, tags = Array.from(document.querySelectorAll('.box-tag-input:checked')).map(x => x.value); 
+                if (!img && !note) { alert('写真かメモのどちらかは必須です'); return; } 
+                const now = Date.now(); 
+                if (bid) { const old = this.db.getBox(bid); this.db.updateBox({ ...old, image: img, note: note, tags: tags, lastModified: now }); Utils.showToast('ボックスを更新しました'); } 
+                else { this.db.addBox({ id: Utils.uuid(), image: img, note: note, tags: tags, timestamp: now, lastModified: now }); Utils.showToast('ボックスを作成しました'); } 
+                
+                // 履歴を戻す（モーダルを閉じるトリガーとなる）
+                history.back();
+                
+                // 画面更新
+                setTimeout(() => {
+                    bid ? this.renderBoxDetail(document.getElementById('main-content'), bid) : this.renderHome(document.getElementById('main-content')); 
+                }, 50);
+            }
+            
             deleteBox(id) { if (confirm('このボックスと中のルアーデータを全て削除しますか？')) { this.db.deleteBox(id); router.navigate('home'); } }
-            openLureForm(bid, copy = null, editLureId = null) { const m = this.db.data.master, isEdit = !!editLureId; let l; if(isEdit) { l = this.db.data.lures.find(x => x.id === editLureId); } else { const last = !copy && sessionStorage.getItem('last_lure') ? JSON.parse(sessionStorage.getItem('last_lure')) : null; l = copy || last || { name: '', maker: '', type: '', sinkType: 'F (フローティング)', length: '', weight: '', depth: '', sinkRate: '', color: '', count: 1, hookSize: '', status: '所持', purchaseDate: Utils.getTodayString(), achievements: '', rank: '指定なし' }; } const sinkOptions = m.sinkTypes.map(x => `<option value="${x}" ${l.sinkType === x ? 'selected' : ''}>${Utils.simplifyType(x)}</option>`).join(''); const c = `<div class="p-4"><h3 class="font-bold text-lg mb-4">${isEdit ? 'ルアー情報編集' : 'ルアー詳細登録'}</h3><div class="grid grid-cols-2 gap-3 mb-3"><div><label class="text-xs text-gray-500">メーカー</label><select id="lure-maker" class="w-full border p-1 rounded"><option value="">選択</option>${m.manufacturers.map(x => `<option ${l.maker === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div><div><label class="text-xs text-gray-500">商品名</label><input type="text" id="lure-name" class="w-full border p-1 rounded" value="${l.name}"></div></div><div class="grid grid-cols-2 gap-3 mb-3"><div><label class="text-xs text-gray-500">タイプ</label><select id="lure-type" class="w-full border p-1 rounded">${m.types.map(x => `<option ${l.type === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div><div><label class="text-xs text-gray-500">浮力</label><select id="lure-sink" class="w-full border p-1 rounded" onchange="ui.toggleDepthInputs()">${sinkOptions}</select></div></div><div class="grid grid-cols-3 gap-2 mb-3"><div><label class="text-xs text-gray-500">長さ(mm)</label><input type="number" inputmode="decimal" step="5" min="0" id="lure-len" class="w-full border p-1 rounded" value="${l.length}"></div><div><label class="text-xs text-gray-500">重さ(g)</label><input type="number" inputmode="decimal" step="0.1" min="0" id="lure-wgt" class="w-full border p-1 rounded" value="${l.weight}"></div><div id="input-group-depth"><label class="text-xs text-gray-500">潜行深度(m)</label><input type="number" inputmode="decimal" step="0.5" min="0" id="lure-dep" class="w-full border p-1 rounded" value="${l.depth || ''}"></div><div id="input-group-sinkrate" style="display:none;"><label class="text-xs text-gray-500">沈降速度(m/s)</label><input type="number" inputmode="decimal" step="0.1" min="0" id="lure-sink-rate" class="w-full border p-1 rounded" value="${l.sinkRate || ''}"></div></div><div class="grid grid-cols-3 gap-2 mb-3"><div><label class="text-xs text-gray-500">フック</label><select id="lure-hook" class="w-full border p-1 rounded"><option value="">選択</option>${(m.hooks || []).map(h => `<option ${l.hookSize === h ? 'selected' : ''}>${h}</option>`).join('')}</select></div><div class="col-span-2"><label class="text-xs text-gray-500">状態</label><select id="lure-status" class="w-full border p-1 rounded"><option ${l.status === '所持' ? 'selected' : ''}>所持</option><option ${l.status === 'ロスト' ? 'selected' : ''}>ロスト</option><option ${l.status === '購入予定' ? 'selected' : ''}>購入予定</option></select></div></div><div class="grid grid-cols-3 gap-2 mb-3"><div><label class="text-xs text-gray-500">ランク</label><select id="lure-rank" class="w-full border p-1 rounded"><option value="指定なし" ${!l.rank || l.rank === '指定なし' ? 'selected' : ''}>指定なし</option><option value="1軍" ${l.rank === '1軍' ? 'selected' : ''}>1軍</option><option value="2軍" ${l.rank === '2軍' ? 'selected' : ''}>2軍</option><option value="3軍" ${l.rank === '3軍' ? 'selected' : ''}>3軍</option></select></div><div class="col-span-2"><label class="text-xs text-gray-500">実績 (釣れた魚種)</label><input type="text" id="lure-achieve" class="w-full border p-1 rounded" placeholder="例: シーバス, クロダイ" value="${l.achievements || ''}"></div></div><div class="grid grid-cols-2 gap-3 mb-4"><div><label class="text-xs text-gray-500">カラー</label><input type="text" id="lure-color" class="w-full border p-1 rounded" value="${l.color}"></div><div><label class="text-xs text-gray-500">購入日</label><input type="date" id="lure-date" class="w-full border p-1 rounded" value="${l.purchaseDate || Utils.getTodayString()}"></div></div><div class="mb-4"><label class="text-xs text-gray-500">個数</label><input type="number" inputmode="numeric" min="0" id="lure-count" class="w-full border p-1 rounded" value="${l.count}"></div><div class="flex gap-2"><button onclick="ui.closeModal()" class="flex-1 bg-gray-200 py-2 rounded">キャンセル</button><button onclick="ui.submitLure('${bid}', '${editLureId || ''}')" class="flex-1 bg-blue-600 text-white py-2 rounded">${isEdit ? '更新' : '登録'}</button></div></div>`; this.showModal(c); this.toggleDepthInputs(); }
+            
+            openLureForm(bid, copy = null, editLureId = null) { 
+                const m = this.db.data.master, isEdit = !!editLureId; 
+                let l; if(isEdit) { l = this.db.data.lures.find(x => x.id === editLureId); } else { const last = !copy && sessionStorage.getItem('last_lure') ? JSON.parse(sessionStorage.getItem('last_lure')) : null; l = copy || last || { name: '', maker: '', type: '', sinkType: 'F (フローティング)', length: '', weight: '', depth: '', sinkRate: '', color: '', count: 1, hookSize: '', status: '所持', purchaseDate: Utils.getTodayString(), achievements: '', rank: '指定なし' }; } 
+                const sinkOptions = m.sinkTypes.map(x => `<option value="${x}" ${l.sinkType === x ? 'selected' : ''}>${Utils.simplifyType(x)}</option>`).join(''); 
+                const c = `<div class="p-4"><h3 class="font-bold text-lg mb-4">${isEdit ? 'ルアー情報編集' : 'ルアー詳細登録'}</h3><div class="grid grid-cols-2 gap-3 mb-3"><div><label class="text-xs text-gray-500">メーカー</label><select id="lure-maker" class="w-full border p-1 rounded"><option value="">選択</option>${m.manufacturers.map(x => `<option ${l.maker === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div><div><label class="text-xs text-gray-500">商品名</label><input type="text" id="lure-name" class="w-full border p-1 rounded" value="${l.name}"></div></div><div class="grid grid-cols-2 gap-3 mb-3"><div><label class="text-xs text-gray-500">タイプ</label><select id="lure-type" class="w-full border p-1 rounded">${m.types.map(x => `<option ${l.type === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div><div><label class="text-xs text-gray-500">浮力</label><select id="lure-sink" class="w-full border p-1 rounded" onchange="ui.toggleDepthInputs()">${sinkOptions}</select></div></div><div class="grid grid-cols-3 gap-2 mb-3"><div><label class="text-xs text-gray-500">長さ(mm)</label><input type="number" inputmode="decimal" step="5" min="0" id="lure-len" class="w-full border p-1 rounded" value="${l.length}"></div><div><label class="text-xs text-gray-500">重さ(g)</label><input type="number" inputmode="decimal" step="0.1" min="0" id="lure-wgt" class="w-full border p-1 rounded" value="${l.weight}"></div><div id="input-group-depth"><label class="text-xs text-gray-500">潜行深度(m)</label><input type="number" inputmode="decimal" step="0.5" min="0" id="lure-dep" class="w-full border p-1 rounded" value="${l.depth || ''}"></div><div id="input-group-sinkrate" style="display:none;"><label class="text-xs text-gray-500">沈降速度(m/s)</label><input type="number" inputmode="decimal" step="0.1" min="0" id="lure-sink-rate" class="w-full border p-1 rounded" value="${l.sinkRate || ''}"></div></div><div class="grid grid-cols-3 gap-2 mb-3"><div><label class="text-xs text-gray-500">フック</label><select id="lure-hook" class="w-full border p-1 rounded"><option value="">選択</option>${(m.hooks || []).map(h => `<option ${l.hookSize === h ? 'selected' : ''}>${h}</option>`).join('')}</select></div><div class="col-span-2"><label class="text-xs text-gray-500">状態</label><select id="lure-status" class="w-full border p-1 rounded"><option ${l.status === '所持' ? 'selected' : ''}>所持</option><option ${l.status === 'ロスト' ? 'selected' : ''}>ロスト</option><option ${l.status === '購入予定' ? 'selected' : ''}>購入予定</option></select></div></div><div class="grid grid-cols-3 gap-2 mb-3"><div><label class="text-xs text-gray-500">ランク</label><select id="lure-rank" class="w-full border p-1 rounded"><option value="指定なし" ${!l.rank || l.rank === '指定なし' ? 'selected' : ''}>指定なし</option><option value="1軍" ${l.rank === '1軍' ? 'selected' : ''}>1軍</option><option value="2軍" ${l.rank === '2軍' ? 'selected' : ''}>2軍</option><option value="3軍" ${l.rank === '3軍' ? 'selected' : ''}>3軍</option></select></div><div class="col-span-2"><label class="text-xs text-gray-500">実績 (釣れた魚種)</label><input type="text" id="lure-achieve" class="w-full border p-1 rounded" placeholder="例: シーバス, クロダイ" value="${l.achievements || ''}"></div></div><div class="grid grid-cols-2 gap-3 mb-4"><div><label class="text-xs text-gray-500">カラー</label><input type="text" id="lure-color" class="w-full border p-1 rounded" value="${l.color}"></div><div><label class="text-xs text-gray-500">購入日</label><input type="date" id="lure-date" class="w-full border p-1 rounded" value="${l.purchaseDate || Utils.getTodayString()}"></div></div><div class="mb-4"><label class="text-xs text-gray-500">個数</label><input type="number" inputmode="numeric" min="0" id="lure-count" class="w-full border p-1 rounded" value="${l.count}"></div><div class="flex gap-2"><button onclick="history.back()" class="flex-1 bg-gray-200 py-2 rounded">キャンセル</button><button onclick="ui.submitLure('${bid}', '${editLureId || ''}')" class="flex-1 bg-blue-600 text-white py-2 rounded">${isEdit ? '更新' : '登録'}</button></div></div>`; 
+                this.showModal(c); this.toggleDepthInputs(); 
+            }
             toggleDepthInputs() { const val = document.getElementById('lure-sink').value; if (val.includes('S') && !val.includes('SP')) { document.getElementById('input-group-depth').style.display = 'none'; document.getElementById('input-group-sinkrate').style.display = 'block'; } else { document.getElementById('input-group-depth').style.display = 'block'; document.getElementById('input-group-sinkrate').style.display = 'none'; } }
-            submitLure(bid, editId) { const l = { id: editId || Utils.uuid(), boxId: bid, maker: document.getElementById('lure-maker').value, name: document.getElementById('lure-name').value, type: document.getElementById('lure-type').value, sinkType: document.getElementById('lure-sink').value, length: document.getElementById('lure-len').value, weight: document.getElementById('lure-wgt').value, depth: document.getElementById('lure-dep').value, sinkRate: document.getElementById('lure-sink-rate').value, color: document.getElementById('lure-color').value, count: document.getElementById('lure-count').value, hookSize: document.getElementById('lure-hook').value, status: document.getElementById('lure-status').value, purchaseDate: document.getElementById('lure-date').value, rank: document.getElementById('lure-rank').value, achievements: document.getElementById('lure-achieve').value }; if(editId) { this.db.updateLure(l); Utils.showToast('ルアー情報を更新しました'); } else { sessionStorage.setItem('last_lure', JSON.stringify(l)); this.db.addLure(l); Utils.showToast('ルアーを登録しました'); } this.closeModal(); this.renderBoxDetail(document.getElementById('main-content'), bid); }
-            openLureDetail(lid) { const l = this.db.data.lures.find(x => x.id === lid); const depthInfo = (l.sinkType && (l.sinkType.includes('S') || l.sinkType.includes('HS'))) ? `沈降: ${l.sinkRate || '-'} m/s` : `深度: ${l.depth || '-'} m`; const c = `<div class="p-4 text-center"><h3 class="font-bold mb-1 text-lg">${l.name} ${l.achievements ? '<i class="fa-solid fa-star text-yellow-500 ml-1"></i>' : ''}</h3><p class="text-sm text-gray-600 mb-2">${l.maker} / ${l.type}</p>${l.rank && l.rank !== '指定なし' ? `<span class="inline-block bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs mb-2 border">ランク: ${l.rank}</span>` : ''}<div class="bg-gray-50 rounded p-2 mb-4 text-sm grid grid-cols-2 gap-2 text-left"><span>タイプ: ${Utils.simplifyType(l.sinkType)}</span><span>カラー: ${l.color}</span><span>長さ: ${l.length}mm</span><span>重さ: ${l.weight}g</span><span>${depthInfo}</span><span>フック: ${l.hookSize}</span><span>状態: ${l.status}</span><span>購入: ${l.purchaseDate}</span></div>${l.achievements ? `<div class="mb-4 text-left bg-yellow-50 p-2 rounded border border-yellow-200"><div class="text-xs text-yellow-800 font-bold mb-1"><i class="fa-solid fa-trophy mr-1"></i>実績</div><div class="text-sm text-gray-700">${l.achievements}</div></div>` : ''}<div class="flex flex-col gap-2"><button onclick="ui.closeModal(); setTimeout(()=>ui.openLureForm('${l.boxId}', null, '${l.id}'), 200)" class="bg-green-600 text-white py-2 rounded font-bold"><i class="fa-solid fa-pen mr-1"></i>編集する</button><button onclick="ui.copyAndAdd('${lid}')" class="bg-blue-100 text-blue-800 py-2 rounded">スペックをコピーして新規</button><button onclick="ui.deleteLure('${lid}','${l.boxId}')" class="bg-red-100 text-red-600 py-2 rounded">削除</button><button onclick="ui.closeModal()" class="text-gray-500 mt-2">閉じる</button></div></div>`; this.showModal(c); }
-            deleteLure(id, bid) { if (confirm('削除しますか？')) { this.db.deleteLure(id); this.closeModal(); this.renderBoxDetail(document.getElementById('main-content'), bid); } }
-            copyAndAdd(id) { const l = this.db.data.lures.find(x => x.id === id); this.closeModal(); setTimeout(() => this.openLureForm(l.boxId, l), 200); }
-            showModal(h) { const c = document.getElementById('modal-container'); c.innerHTML = h; document.getElementById('modal-overlay').classList.remove('hidden'); c.classList.add('modal-enter'); setTimeout(() => c.classList.add('modal-enter-active'), 10); }
-            closeModal() { const c = document.getElementById('modal-container'); c.classList.remove('modal-enter-active'); c.classList.add('modal-exit-active'); setTimeout(() => { document.getElementById('modal-overlay').classList.add('hidden'); c.classList.remove('modal-exit-active'); c.innerHTML = ''; }, 200); }
+            
+            submitLure(bid, editId) { 
+                const l = { id: editId || Utils.uuid(), boxId: bid, maker: document.getElementById('lure-maker').value, name: document.getElementById('lure-name').value, type: document.getElementById('lure-type').value, sinkType: document.getElementById('lure-sink').value, length: document.getElementById('lure-len').value, weight: document.getElementById('lure-wgt').value, depth: document.getElementById('lure-dep').value, sinkRate: document.getElementById('lure-sink-rate').value, color: document.getElementById('lure-color').value, count: document.getElementById('lure-count').value, hookSize: document.getElementById('lure-hook').value, status: document.getElementById('lure-status').value, purchaseDate: document.getElementById('lure-date').value, rank: document.getElementById('lure-rank').value, achievements: document.getElementById('lure-achieve').value }; 
+                if(editId) { this.db.updateLure(l); Utils.showToast('ルアー情報を更新しました'); } 
+                else { sessionStorage.setItem('last_lure', JSON.stringify(l)); this.db.addLure(l); Utils.showToast('ルアーを登録しました'); } 
+                
+                history.back();
+                setTimeout(() => {
+                    this.renderBoxDetail(document.getElementById('main-content'), bid);
+                }, 50);
+            }
+            
+            openLureDetail(lid) { 
+                const l = this.db.data.lures.find(x => x.id === lid); const depthInfo = (l.sinkType && (l.sinkType.includes('S') || l.sinkType.includes('HS'))) ? `沈降: ${l.sinkRate || '-'} m/s` : `深度: ${l.depth || '-'} m`; 
+                const c = `<div class="p-4 text-center"><h3 class="font-bold mb-1 text-lg">${l.name} ${l.achievements ? '<i class="fa-solid fa-star text-yellow-500 ml-1"></i>' : ''}</h3><p class="text-sm text-gray-600 mb-2">${l.maker} / ${l.type}</p>${l.rank && l.rank !== '指定なし' ? `<span class="inline-block bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs mb-2 border">ランク: ${l.rank}</span>` : ''}<div class="bg-gray-50 rounded p-2 mb-4 text-sm grid grid-cols-2 gap-2 text-left"><span>タイプ: ${Utils.simplifyType(l.sinkType)}</span><span>カラー: ${l.color}</span><span>長さ: ${l.length}mm</span><span>重さ: ${l.weight}g</span><span>${depthInfo}</span><span>フック: ${l.hookSize}</span><span>状態: ${l.status}</span><span>購入: ${l.purchaseDate}</span></div>${l.achievements ? `<div class="mb-4 text-left bg-yellow-50 p-2 rounded border border-yellow-200"><div class="text-xs text-yellow-800 font-bold mb-1"><i class="fa-solid fa-trophy mr-1"></i>実績</div><div class="text-sm text-gray-700">${l.achievements}</div></div>` : ''}<div class="flex flex-col gap-2"><button onclick="history.back(); setTimeout(()=>ui.openLureForm('${l.boxId}', null, '${l.id}'), 200)" class="bg-green-600 text-white py-2 rounded font-bold"><i class="fa-solid fa-pen mr-1"></i>編集する</button><button onclick="ui.copyAndAdd('${lid}')" class="bg-blue-100 text-blue-800 py-2 rounded">スペックをコピーして新規</button><button onclick="ui.deleteLure('${lid}','${l.boxId}')" class="bg-red-100 text-red-600 py-2 rounded">削除</button><button onclick="history.back()" class="text-gray-500 mt-2">閉じる</button></div></div>`; 
+                this.showModal(c); 
+            }
+            
+            deleteLure(id, bid) { 
+                if (confirm('削除しますか？')) { 
+                    this.db.deleteLure(id); 
+                    // 詳細モーダルが開いているはずなので、それを閉じるために戻る
+                    history.back(); 
+                    setTimeout(() => {
+                        this.renderBoxDetail(document.getElementById('main-content'), bid); 
+                    }, 50);
+                } 
+            }
+            
+            copyAndAdd(id) { 
+                const l = this.db.data.lures.find(x => x.id === id); 
+                // 詳細モーダルを閉じるために戻る
+                history.back(); 
+                setTimeout(() => this.openLureForm(l.boxId, l), 200); 
+            }
+            
+            showModal(h) { 
+                // 履歴にステートを追加（戻るボタンで閉じるため）
+                history.pushState({ modal: true }, "");
+                
+                const c = document.getElementById('modal-container'); 
+                c.innerHTML = h; 
+                document.getElementById('modal-overlay').classList.remove('hidden'); 
+                c.classList.add('modal-enter'); 
+                setTimeout(() => c.classList.add('modal-enter-active'), 10); 
+                this.isModalOpen = true;
+            }
+            
+            // モーダル閉じる（UI処理のみ）
+            closeModal() { 
+                if (!this.isModalOpen) return;
+                this.isModalOpen = false;
+                
+                const c = document.getElementById('modal-container'); 
+                c.classList.remove('modal-enter-active'); 
+                c.classList.add('modal-exit-active'); 
+                setTimeout(() => { 
+                    document.getElementById('modal-overlay').classList.add('hidden'); 
+                    c.classList.remove('modal-exit-active'); 
+                    c.innerHTML = ''; 
+                }, 200); 
+            }
         }
 
         const db = new DataManager();
         const ui = new UIManager(db);
         const router = new AppRouter(ui);
-        document.addEventListener('DOMContentLoaded', () => router.navigate('home'));
+        
+        // 初回ロード時の履歴設定
+        document.addEventListener('DOMContentLoaded', () => {
+            history.replaceState({ route: 'home', params: null }, "");
+            router.navigate('home', null, true);
+        });
     </script>
 </body>
 </html>
