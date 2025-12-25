@@ -140,12 +140,22 @@
             "コンビ系": [
                 { name: "アカキン", style: "background: linear-gradient(to bottom, red, gold);" },
                 { name: "オレキン", style: "background: linear-gradient(to bottom, orange, gold);" },
-                { name: "クラウン", style: "background: linear-gradient(to bottom, red, yellow, white);" },
-                { name: "グリキン", style: "background: linear-gradient(to bottom, green, gold);" },
                 { name: "クロキン", style: "background: linear-gradient(to bottom, black, gold);" },
-                { name: "コットンキャンディ", style: "background: linear-gradient(to right, #ffb7b2, #a2e2ff);" },
+                { name: "グリキン", style: "background: linear-gradient(to bottom, green, gold);" },
+                { name: "ピンクゴールド", style: "background: linear-gradient(to bottom, pink, gold);" },
+                { name: "アカシルバー", style: "background: linear-gradient(to bottom, red, silver);" },
+                { name: "オレシルバー", style: "background: linear-gradient(to bottom, orange, silver);" },
+                { name: "クロシルバー", style: "background: linear-gradient(to bottom, black, silver);" },
+                { name: "グリシルバー", style: "background: linear-gradient(to bottom, green, silver);" },
+                { name: "ピンクシルバー", style: "background: linear-gradient(to bottom, pink, silver);" },
+                { name: "ブルーシルバー", style: "background: linear-gradient(to bottom, blue, silver);" },
                 { name: "ブルピン", style: "background: linear-gradient(to bottom, blue, pink);" },
-                { name: "レッドヘッド", style: "background: linear-gradient(to right, red 35%, white 35%);" }
+                { name: "レッドヘッド", style: "background: linear-gradient(to right, red 35%, white 35%);" },
+                { name: "チャートヘッド", style: "background: linear-gradient(to right, #7fff00 35%, white 35%);" },
+                { name: "ピンクヘッド", style: "background: linear-gradient(to right, pink 35%, white 35%);" },
+                { name: "コットンキャンディ", style: "background: linear-gradient(to right, #ffb7b2, #a2e2ff);" },
+                { name: "レインボー", style: "background: linear-gradient(to right, red, orange, yellow, green, blue, indigo, violet);" },
+                { name: "クラウン", style: "background: linear-gradient(to bottom, red, yellow, white);" }
             ],
             "ナチュラル系": [
                 { name: "アユ", style: `background: ${SCALE_PATTERN} linear-gradient(to bottom, #556b2f, yellow, white);` },
@@ -155,7 +165,9 @@
                 { name: "キビナゴ", style: `background: ${SCALE_PATTERN} linear-gradient(to right, blue, silver);` },
                 { name: "コノシロ", style: `background: ${SCALE_PATTERN} linear-gradient(to bottom, gray, silver);` },
                 { name: "シラス", style: `background: ${SCALE_PATTERN} #dcdcdc;` },
-                { name: "ワカサギ", style: `background: ${SCALE_PATTERN} linear-gradient(to bottom, purple, silver);` }
+                { name: "ワカサギ", style: `background: ${SCALE_PATTERN} linear-gradient(to bottom, purple, silver);` },
+                { name: "ボラ", style: `background: ${SCALE_PATTERN} linear-gradient(to bottom, #2f4f4f, silver);` },
+                { name: "ハス", style: `background: ${SCALE_PATTERN} linear-gradient(to bottom, #b0c4de, silver);` }
             ],
             "ホロ・質感系": [
                 { name: "クラッシュホロ", style: "background: repeating-linear-gradient(45deg, silver, white 10px, silver 20px);" },
@@ -521,7 +533,7 @@
 
                 c.innerHTML = `
                 <div class="space-y-3 pb-20">
-                    <details class="bg-white p-3 rounded shadow group">
+                    <details class="bg-white p-3 rounded shadow group" open>
                         <summary class="font-bold text-gray-700 flex justify-between items-center text-sm">
                             <span><i class="fa-solid fa-paintbrush mr-2"></i>表示設定</span>
                             <i class="fa-solid fa-chevron-down transition-transform text-gray-400"></i>
@@ -649,29 +661,111 @@
             
             deleteBox(id) { if (confirm('このボックスと中のルアーデータを全て削除しますか？')) { this.db.deleteBox(id); router.navigate('home'); } }
             
+            // ルアー編集フォームを開く（2段階選択対応）
             openLureForm(bid, copy = null, editLureId = null) { 
                 const m = this.db.data.master, isEdit = !!editLureId; 
-                let l; if(isEdit) { l = this.db.data.lures.find(x => x.id === editLureId); } else { const last = !copy && sessionStorage.getItem('last_lure') ? JSON.parse(sessionStorage.getItem('last_lure')) : null; l = copy || last || { name: '', maker: '', type: '', sinkType: 'F (フローティング)', length: '', weight: '', depth: '', sinkRate: '', color: '', count: 1, hookSize: '', status: '所持', purchaseDate: Utils.getTodayString(), achievements: '', rank: '指定なし' }; } 
-                const sinkOptions = m.sinkTypes.map(x => `<option value="${x}" ${l.sinkType === x ? 'selected' : ''}>${Utils.simplifyType(x)}</option>`).join(''); 
+                let l; 
+                if(isEdit) { l = this.db.data.lures.find(x => x.id === editLureId); } 
+                else { const last = !copy && sessionStorage.getItem('last_lure') ? JSON.parse(sessionStorage.getItem('last_lure')) : null; l = copy || last || { name: '', maker: '', type: '', sinkType: 'F (フローティング)', length: '', weight: '', depth: '', sinkRate: '', color: '', count: 1, hookSize: '', status: '所持', purchaseDate: Utils.getTodayString(), achievements: '', rank: '指定なし' }; } 
                 
-                // カラーセレクトボックスの生成
-                let colorOptions = '<option value="">指定なし</option>';
+                const sinkOptions = m.sinkTypes.map(x => `<option value="${x}" ${l.sinkType === x ? 'selected' : ''}>${Utils.simplifyType(x)}</option>`).join('');
+                
+                // --- 2段階選択用ロジック ---
+                // 1. カテゴリーを特定
+                let initialCategory = "";
+                let hasColorInList = false;
+                if (l.color) {
+                    for (const cat in LURE_COLORS) {
+                        if (LURE_COLORS[cat].some(c => c.name === l.color)) {
+                            initialCategory = cat;
+                            hasColorInList = true;
+                            break;
+                        }
+                    }
+                }
+                
+                // 2. カテゴリー選択肢の生成
+                let categoryOptions = `<option value="">カテゴリーを選択</option>`;
                 for (const cat in LURE_COLORS) {
-                    colorOptions += `<optgroup label="${cat}">`;
-                    LURE_COLORS[cat].forEach(c => {
+                    categoryOptions += `<option value="${cat}" ${initialCategory === cat ? 'selected' : ''}>${cat}</option>`;
+                }
+                
+                // 3. カラー選択肢の生成 (初期状態)
+                let colorOptions = `<option value="">カラーを選択</option>`;
+                if (initialCategory) {
+                    LURE_COLORS[initialCategory].forEach(c => {
                         colorOptions += `<option value="${c.name}" ${l.color === c.name ? 'selected' : ''}>${c.name}</option>`;
                     });
-                    colorOptions += `</optgroup>`;
                 }
-                
-                let isCustomColor = l.color && !Object.values(LURE_COLORS).flat().some(c => c.name === l.color);
-                if (isCustomColor) {
-                    colorOptions = `<option value="${l.color}" selected>${l.color}</option>` + colorOptions;
+                // リストにないカスタムカラーが設定されていた場合の救済
+                if (l.color && !hasColorInList) {
+                    categoryOptions += `<option value="custom" selected>その他 (未登録カラー)</option>`;
+                    colorOptions = `<option value="${l.color}" selected>${l.color}</option>`;
                 }
 
-                const c = `<div class="p-4"><h3 class="font-bold text-lg mb-4">${isEdit ? 'ルアー情報編集' : 'ルアー詳細登録'}</h3><div class="grid grid-cols-2 gap-3 mb-3"><div><label class="text-xs text-gray-500">メーカー</label><select id="lure-maker" class="w-full border p-1 rounded"><option value="">選択</option>${m.manufacturers.map(x => `<option ${l.maker === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div><div><label class="text-xs text-gray-500">商品名</label><input type="text" id="lure-name" class="w-full border p-1 rounded" value="${l.name}"></div></div><div class="grid grid-cols-2 gap-3 mb-3"><div><label class="text-xs text-gray-500">タイプ</label><select id="lure-type" class="w-full border p-1 rounded">${m.types.map(x => `<option ${l.type === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div><div><label class="text-xs text-gray-500">浮力</label><select id="lure-sink" class="w-full border p-1 rounded" onchange="ui.toggleDepthInputs()">${sinkOptions}</select></div></div><div class="grid grid-cols-3 gap-2 mb-3"><div><label class="text-xs text-gray-500">長さ(mm)</label><input type="number" inputmode="decimal" step="5" min="0" id="lure-len" class="w-full border p-1 rounded" value="${l.length}"></div><div><label class="text-xs text-gray-500">重さ(g)</label><input type="number" inputmode="decimal" step="0.1" min="0" id="lure-wgt" class="w-full border p-1 rounded" value="${l.weight}"></div><div id="input-group-depth"><label class="text-xs text-gray-500">潜行深度(m)</label><input type="number" inputmode="decimal" step="0.5" min="0" id="lure-dep" class="w-full border p-1 rounded" value="${l.depth || ''}"></div><div id="input-group-sinkrate" style="display:none;"><label class="text-xs text-gray-500">沈降速度(m/s)</label><input type="number" inputmode="decimal" step="0.1" min="0" id="lure-sink-rate" class="w-full border p-1 rounded" value="${l.sinkRate || ''}"></div></div><div class="grid grid-cols-3 gap-2 mb-3"><div><label class="text-xs text-gray-500">フック</label><select id="lure-hook" class="w-full border p-1 rounded"><option value="">選択</option>${(m.hooks || []).map(h => `<option ${l.hookSize === h ? 'selected' : ''}>${h}</option>`).join('')}</select></div><div class="col-span-2"><label class="text-xs text-gray-500">状態</label><select id="lure-status" class="w-full border p-1 rounded"><option ${l.status === '所持' ? 'selected' : ''}>所持</option><option ${l.status === 'ロスト' ? 'selected' : ''}>ロスト</option><option ${l.status === '購入予定' ? 'selected' : ''}>購入予定</option></select></div></div><div class="grid grid-cols-3 gap-2 mb-3"><div><label class="text-xs text-gray-500">ランク</label><select id="lure-rank" class="w-full border p-1 rounded"><option value="指定なし" ${!l.rank || l.rank === '指定なし' ? 'selected' : ''}>指定なし</option><option value="1軍" ${l.rank === '1軍' ? 'selected' : ''}>1軍</option><option value="2軍" ${l.rank === '2軍' ? 'selected' : ''}>2軍</option><option value="3軍" ${l.rank === '3軍' ? 'selected' : ''}>3軍</option></select></div><div class="col-span-2"><label class="text-xs text-gray-500">実績 (釣れた魚種)</label><input type="text" id="lure-achieve" class="w-full border p-1 rounded" placeholder="例: シーバス, クロダイ" value="${l.achievements || ''}"></div></div><div class="grid grid-cols-2 gap-3 mb-4"><div><label class="text-xs text-gray-500">カラー</label><select id="lure-color" class="w-full border p-1 rounded">${colorOptions}</select></div><div><label class="text-xs text-gray-500">購入日</label><input type="date" id="lure-date" class="w-full border p-1 rounded" value="${l.purchaseDate || Utils.getTodayString()}"></div></div><div class="mb-4"><label class="text-xs text-gray-500">個数</label><input type="number" inputmode="numeric" min="0" id="lure-count" class="w-full border p-1 rounded" value="${l.count}"></div><div class="flex gap-2"><button onclick="history.back()" class="flex-1 bg-gray-200 py-2 rounded">キャンセル</button><button onclick="ui.submitLure('${bid}', '${editLureId || ''}')" class="flex-1 bg-blue-600 text-white py-2 rounded">${isEdit ? '更新' : '登録'}</button></div></div>`; 
+                const c = `
+                    <div class="p-4">
+                        <h3 class="font-bold text-lg mb-4">${isEdit ? 'ルアー情報編集' : 'ルアー詳細登録'}</h3>
+                        <div class="grid grid-cols-2 gap-3 mb-3">
+                            <div><label class="text-xs text-gray-500">メーカー</label><select id="lure-maker" class="w-full border p-1 rounded"><option value="">選択</option>${m.manufacturers.map(x => `<option ${l.maker === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+                            <div><label class="text-xs text-gray-500">商品名</label><input type="text" id="lure-name" class="w-full border p-1 rounded" value="${l.name}"></div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3 mb-3">
+                            <div><label class="text-xs text-gray-500">タイプ</label><select id="lure-type" class="w-full border p-1 rounded">${m.types.map(x => `<option ${l.type === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+                            <div><label class="text-xs text-gray-500">浮力</label><select id="lure-sink" class="w-full border p-1 rounded" onchange="ui.toggleDepthInputs()">${sinkOptions}</select></div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 mb-3">
+                            <div><label class="text-xs text-gray-500">長さ(mm)</label><input type="number" inputmode="decimal" step="5" min="0" id="lure-len" class="w-full border p-1 rounded" value="${l.length}"></div>
+                            <div><label class="text-xs text-gray-500">重さ(g)</label><input type="number" inputmode="decimal" step="0.1" min="0" id="lure-wgt" class="w-full border p-1 rounded" value="${l.weight}"></div>
+                            <div id="input-group-depth"><label class="text-xs text-gray-500">潜行深度(m)</label><input type="number" inputmode="decimal" step="0.5" min="0" id="lure-dep" class="w-full border p-1 rounded" value="${l.depth || ''}"></div>
+                            <div id="input-group-sinkrate" style="display:none;"><label class="text-xs text-gray-500">沈降速度(m/s)</label><input type="number" inputmode="decimal" step="0.1" min="0" id="lure-sink-rate" class="w-full border p-1 rounded" value="${l.sinkRate || ''}"></div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 mb-3">
+                            <div><label class="text-xs text-gray-500">フック</label><select id="lure-hook" class="w-full border p-1 rounded"><option value="">選択</option>${(m.hooks || []).map(h => `<option ${l.hookSize === h ? 'selected' : ''}>${h}</option>`).join('')}</select></div>
+                            <div class="col-span-2"><label class="text-xs text-gray-500">状態</label><select id="lure-status" class="w-full border p-1 rounded"><option ${l.status === '所持' ? 'selected' : ''}>所持</option><option ${l.status === 'ロスト' ? 'selected' : ''}>ロスト</option><option ${l.status === '購入予定' ? 'selected' : ''}>購入予定</option></select></div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 mb-3">
+                            <div><label class="text-xs text-gray-500">ランク</label><select id="lure-rank" class="w-full border p-1 rounded"><option value="指定なし" ${!l.rank || l.rank === '指定なし' ? 'selected' : ''}>指定なし</option><option value="1軍" ${l.rank === '1軍' ? 'selected' : ''}>1軍</option><option value="2軍" ${l.rank === '2軍' ? 'selected' : ''}>2軍</option><option value="3軍" ${l.rank === '3軍' ? 'selected' : ''}>3軍</option></select></div>
+                            <div class="col-span-2"><label class="text-xs text-gray-500">実績 (釣れた魚種)</label><input type="text" id="lure-achieve" class="w-full border p-1 rounded" placeholder="例: シーバス, クロダイ" value="${l.achievements || ''}"></div>
+                        </div>
+                        
+                        <!-- 2段階カラー選択 -->
+                        <div class="grid grid-cols-2 gap-3 mb-4">
+                            <div>
+                                <label class="text-xs text-gray-500">カラー系統</label>
+                                <select id="lure-color-category" class="w-full border p-1 rounded" onchange="ui.updateColorSelect(this.value)">${categoryOptions}</select>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-500">カラー詳細</label>
+                                <select id="lure-color" class="w-full border p-1 rounded">${colorOptions}</select>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="text-xs text-gray-500">購入日</label>
+                            <input type="date" id="lure-date" class="w-full border p-1 rounded" value="${l.purchaseDate || Utils.getTodayString()}">
+                        </div>
+                        <div class="mb-4"><label class="text-xs text-gray-500">個数</label><input type="number" inputmode="numeric" min="0" id="lure-count" class="w-full border p-1 rounded" value="${l.count}"></div>
+                        <div class="flex gap-2"><button onclick="history.back()" class="flex-1 bg-gray-200 py-2 rounded">キャンセル</button><button onclick="ui.submitLure('${bid}', '${editLureId || ''}')" class="flex-1 bg-blue-600 text-white py-2 rounded">${isEdit ? '更新' : '登録'}</button></div>
+                    </div>`; 
                 this.showModal(c); this.toggleDepthInputs(); 
             }
+            
+            // カテゴリー変更時にカラー選択肢を更新するメソッド
+            updateColorSelect(category) {
+                const colorSelect = document.getElementById('lure-color');
+                colorSelect.innerHTML = '<option value="">カラーを選択</option>';
+                
+                if (category && LURE_COLORS[category]) {
+                    LURE_COLORS[category].forEach(c => {
+                        const option = document.createElement('option');
+                        option.value = c.name;
+                        option.textContent = c.name;
+                        colorSelect.appendChild(option);
+                    });
+                }
+            }
+
             toggleDepthInputs() { const val = document.getElementById('lure-sink').value; if (val.includes('S') && !val.includes('SP')) { document.getElementById('input-group-depth').style.display = 'none'; document.getElementById('input-group-sinkrate').style.display = 'block'; } else { document.getElementById('input-group-depth').style.display = 'block'; document.getElementById('input-group-sinkrate').style.display = 'none'; } }
             
             submitLure(bid, editId) { 
